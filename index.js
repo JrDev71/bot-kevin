@@ -229,5 +229,20 @@ client.on("messageReactionRemove", async (reaction, user) => {
   console.log("-------------------------\n");
 });
 
+const http = require("http");
+
+const server = http.createServer((req, res) => {
+  // Responde com OK para o monitor de saúde do Render
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("MC KEVIN Bot is running and healthy!\n");
+});
+
+// O Render injeta o número da porta na variável de ambiente PORT.
+const port = process.env.PORT || 3000;
+
+server.listen(port, () => {
+  console.log(`Render health check server running on port ${port}`);
+});
+
 // --- LOGIN ---
 client.login(TOKEN);

@@ -1,0 +1,61 @@
+{
+  "Roles": {
+    "jesus": {
+      "id": "770411818827907181",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794783080841236/JesusChrist.png"
+    },
+    "nikeowner": {
+      "id": "780947356157739018",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794585860866068/NikeOwner.gif"
+    },
+    "influencer": {
+      "id": "822481152576061511",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/850864476361588766/2283_molang_selfie.gif"
+    },
+    "black": {
+      "id": "850562530903326751",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/850738806914547763/ezgif-3-b51c7a04d6ba.gif"
+    },
+    "silver": {
+      "id": "822478314131161109",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794587088879616/VipSilver.png"
+    },
+    "panic": {
+      "id": "1435040522426126526",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794594420785182/Sayajin.png"
+    },
+    "caos": {
+      "id": "1435040523437215815",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/850562148407967774/1fa90.png"
+    },
+    "jogapramidia": {
+      "id": "1435040524716347393",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/850560194610069524/289739fc80938b30ebbf62ec386f39a0.png"
+    },
+    "maodeouro": {
+      "id": "1437681152415498242",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794601685450792/Cientista.png"
+    },
+    "primeiradama": {
+      "id": "1435040530701746236",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794596510466058/PrimeiraDama.png"
+    },
+    "booster": {
+      "id": "1435382752751910935",
+      "image": "https://cdn.discordapp.com/attachments/830464371641679873/830794598854033450/Booster.gif"
+    }
+  },
+  "ArrayRolesID": [
+    "770411818827907181",
+    "780947356157739018",
+    "822481152576061511",
+    "850562530903326751",
+    "822478314131161109",
+    "783863935203409963",
+    "847887946970955796",
+    "840399832249401385",
+    "827697591445094410",
+    "770413703882866729",
+    "782738518862331904"
+  ]
+}

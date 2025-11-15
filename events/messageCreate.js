@@ -10,6 +10,7 @@ const { handlePDCommand } = require("../pdManager");
 
 const handleMention = require("../handlers/mentionHandler");
 const avatarCommand = require("../commands/avatar");
+const { handleClear } = require("../commands/roncaputa");
 const PREFIX = "k!";
 
 // Emojis Customizados do Usuário (IDs)

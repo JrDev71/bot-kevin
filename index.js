@@ -4,6 +4,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
+const http = require("http"); // Adicionado para o health check do Render
 const {
   Client,
   GatewayIntentBits,
@@ -138,9 +139,8 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
 
   const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name;
+  const emojiKey = reaction.emoji.id || reaction.emoji.name; // --- LOGS CRÍTICOS ---
 
-  // --- LOGS CRÍTICOS ---
   console.log("\n--- DEBUG ROLE REACTION ADD ---");
   console.log(`1. Msg ID Reagida: ${reaction.message.id}`);
   console.log(`2. Config ID Esperado: ${config.ROLE_REACTION_MESSAGE_ID}`);
@@ -159,9 +159,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
     console.log("-> FALHA 2: Emoji não mapeado (ID do cargo não encontrado).");
     console.log("-------------------------\n");
     return;
-  }
-  // --- FIM DOS LOGS DE CHECAGEM ---
-
+  } // --- FIM DOS LOGS DE CHECAGEM ---
   const member = reaction.message.guild.members.cache.get(user.id);
   const role = reaction.message.guild.roles.cache.get(roleId);
 
@@ -185,9 +183,8 @@ client.on("messageReactionRemove", async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
 
   const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name;
+  const emojiKey = reaction.emoji.id || reaction.emoji.name; // --- LOGS CRÍTICOS ---
 
-  // --- LOGS CRÍTICOS ---
   console.log("\n--- DEBUG ROLE REACTION REMOVE ---");
   console.log(`1. Msg ID Reagida: ${reaction.message.id}`);
   console.log(`2. Config ID Esperado: ${config.ROLE_REACTION_MESSAGE_ID}`);
@@ -209,7 +206,7 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 
   const member = reaction.message.guild.members.cache.get(user.id);
-  const role = reaction.message.guild.roles.cache.get(roleId); // Checa se o membro tem o cargo antes de tentar remover (segurança)
+  const role = reaction.message.guild.roles.cache.get(roleId);
 
   if (member && role && member.roles.cache.has(roleId)) {
     try {
@@ -229,15 +226,13 @@ client.on("messageReactionRemove", async (reaction, user) => {
   console.log("-------------------------\n");
 });
 
-const http = require("http");
-
+// --- WORKAROUND PARA RENDER (HEALTH CHECK) ---
 const server = http.createServer((req, res) => {
-  // Responde com OK para o monitor de saúde do Render
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("MC KEVIN Bot is running and healthy!\n");
 });
 
-// O Render injeta o número da porta na variável de ambiente PORT.
+// A porta é definida pelo Render (process.env.PORT)
 const port = process.env.PORT || 3000;
 
 server.listen(port, () => {

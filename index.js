@@ -239,6 +239,18 @@ const port = process.env.PORT || 3000;
 server.listen(port, () => {
   console.log(`Render health check server running on port ${port}`);
 });
+// --- TESTE DE DEBUG DE VOZ (Adicione no final do index.js) ---
+client.on("voiceStateUpdate", (oldState, newState) => {
+  const user = newState.member ? newState.member.user.tag : "Desconhecido";
+  console.log(`\n[TESTE ABSOLUTO] O evento de voz DISPAROU para: ${user}`);
+  console.log(`Canal Antigo: ${oldState.channelId}`);
+  console.log(`Canal Novo: ${newState.channelId}`);
+
+  // Verifica se a intent está funcionando
+  if (!oldState.guild && !newState.guild) {
+    console.log("ALERTA: Guild não detectada. Intents podem estar desligadas.");
+  }
+});
 
 // --- LOGIN ---
 client.login(TOKEN);

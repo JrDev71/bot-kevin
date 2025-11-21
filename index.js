@@ -4,7 +4,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const http = require("http"); // Adicionado para o health check do Render
+const http = require("http"); // Health check do Render
 const {
   Client,
   GatewayIntentBits,
@@ -13,47 +13,64 @@ const {
   ButtonStyle,
   EmbedBuilder,
   Collection,
+  Partials,
 } = require("discord.js");
 
-// Carregar Variáveis de Ambiente e Constantes
+// Carregar Variáveis de Ambiente
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
-// Inicialização do Cliente
+// --- INICIALIZAÇÃO DO CLIENTE (COM TODAS AS INTENTS) ---
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMembers, // Necessário para ver quem entra/sai
+    GatewayIntentBits.GuildBans, // Necessário para logs de ban
+    GatewayIntentBits.GuildEmojisAndStickers,
+    GatewayIntentBits.GuildIntegrations,
+    GatewayIntentBits.GuildWebhooks,
+    GatewayIntentBits.GuildInvites,
+    GatewayIntentBits.GuildVoiceStates, // <--- CRUCIAL PARA LOGS DE CALL
+    GatewayIntentBits.GuildPresences, // Necessário para atualizações de status
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions, // NECESSÁRIO
+    GatewayIntentBits.DirectMessages,
   ],
-  partials: ["MESSAGE", "CHANNEL", "REACTION"], // NECESSÁRIO
+  partials: [
+    Partials.Message,
+    Partials.Channel,
+    Partials.Reaction,
+    Partials.GuildMember,
+    Partials.User,
+  ],
 });
 
 // --- VARIÁVEIS DE MAPEAMENTO GLOBAL ---
 client.config = {
+  // Verificação
   VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
   APPROVER_ROLE_ID: process.env.APPROVER_ROLE_ID,
   SECONDARY_APPROVER_ROLE_ID: process.env.SECONDARY_APPROVER_ROLE_ID,
 
+  // Canais de Fluxo
   APPROVAL_CHANNEL_ID: process.env.APPROVAL_CHANNEL_ID,
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
   ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
-  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID, // --- CANAIS DE LOG DEDICADOS (AUDITORIA) ---
+  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID,
 
+  // Logs de Auditoria
   MEMBER_JOIN_LEAVE_LOG_ID: process.env.MEMBER_JOIN_LEAVE_LOG_ID,
   MESSAGE_EDIT_LOG_ID: process.env.MESSAGE_EDIT_LOG_ID,
   MESSAGE_DELETE_LOG_ID: process.env.MESSAGE_DELETE_LOG_ID,
   MOD_BAN_LOG_ID: process.env.MOD_BAN_LOG_ID,
   MOD_MUTE_LOG_ID: process.env.MOD_MUTE_LOG_ID,
-  VOICE_LOG_ID: process.env.VOICE_LOG_ID,
+  VOICE_LOG_ID: process.env.VOICE_LOG_ID, // Verifique se esta variável existe no .env
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
-  PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID, // <--- NOVO: Log de PD
-  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral (Fallback)
+  PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID,
+  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
 
+  // Role Mapping (Role Reaction)
   ROLE_MAPPING: {
     "1437889904406433974": "1437891203558277283",
     "1437889927613517975": "1437891278690975878",
@@ -62,15 +79,15 @@ client.config = {
 
 // --- CARREGAMENTO DE EVENTOS PRINCIPAIS ---
 
-// Carrega o MessageCreate (Roteador de Comandos)
+const { startRound } = require("./game/gameManager"); // Apenas carrega para garantir cache se necessário
+
 const handleMessageCreate = require("./events/messageCreate");
 client.on("messageCreate", handleMessageCreate);
 
-// Carrega o InteractionCreate (Botões e Modais)
 const handleInteractionCreate = require("./events/interactionCreate");
 client.on("interactionCreate", handleInteractionCreate);
 
-// --- CARREGAMENTO DE LOGGERS (PASTA events/loggers/) ---
+// --- CARREGAMENTO DE LOGGERS (AUDITORIA) ---
 const loggersPath = path.join(__dirname, "events", "loggers");
 if (fs.existsSync(loggersPath)) {
   const loggerFiles = fs
@@ -79,18 +96,19 @@ if (fs.existsSync(loggersPath)) {
 
   for (const file of loggerFiles) {
     const filePath = path.join(loggersPath, file);
-    const logger = require(filePath);
-
-    if (logger.name && logger.execute) {
-      // Passa 'client' como 1º argumento para acesso às configs
-      client.on(logger.name, (...args) => logger.execute(client, ...args));
-      console.log(`[LOGS] Módulo carregado: ${file}`);
+    try {
+      const logger = require(filePath);
+      if (logger.name && logger.execute) {
+        // Passa 'client' como 1º argumento para acesso às configs
+        client.on(logger.name, (...args) => logger.execute(client, ...args));
+        console.log(`[LOGS] Módulo carregado: ${file}`);
+      }
+    } catch (e) {
+      console.error(`[LOGS] Erro ao carregar ${file}:`, e);
     }
   }
 } else {
-  console.warn(
-    "[LOGS] Pasta 'events/loggers' não encontrada. Logs de auditoria inativos."
-  );
+  console.warn("[LOGS] Pasta 'events/loggers' não encontrada.");
 }
 
 // --- POSTAGEM DO PAINEL DE VERIFICAÇÃO ---
@@ -101,9 +119,7 @@ async function postVerificationPanel(client) {
   );
 
   if (!channel) {
-    return console.error(
-      "Canal de verificação não encontrado. Verifique o ID no .env."
-    );
+    return console.error("Canal de verificação não encontrado.");
   }
 
   const LOGO_URL =
@@ -143,14 +159,19 @@ process.on("uncaughtException", (err, origin) => {
 process.on("unhandledRejection", (reason, promise) => {
   console.error(`\n--- Promessa Rejeitada (Unhandled Rejection) ---`);
   console.error(`Razão:`, reason);
-  console.error(`Promise:`, promise);
+  // console.error(`Promise:`, promise); // Opcional para reduzir spam
   console.error(`-------------------------------------------------\n`);
 });
 
 // --- EVENTO READY ---
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
-  console.log(`[STATUS] Bot pronto para receber comandos.`);
+
+  // Validação rápida de permissões de voz
+  console.log("[DEBUG] Verificando Intent de Voz...");
+  // Não há uma propriedade direta para ler intents ativas facilmente após init,
+  // mas se chegamos aqui, o cliente logou.
+
   await postVerificationPanel(client);
 
   // Força o fetch da mensagem de role reaction
@@ -161,18 +182,14 @@ client.once("ready", async () => {
       try {
         await channel.messages.fetch(ROLE_REACTION_MESSAGE_ID);
         console.log(
-          `[SUCESSO] Mensagem de Role Reaction carregada na memória. ID: ${ROLE_REACTION_MESSAGE_ID}`
+          `[SUCESSO] Mensagem de Role Reaction carregada na memória.`
         );
       } catch (err) {
         console.error(
-          `[ERRO] Falha ao carregar mensagem de Role Reaction. Verifique IDs e Permissões.`,
+          `[ERRO] Falha ao carregar mensagem de Role Reaction.`,
           err
         );
       }
-    } else {
-      console.error(
-        `[ERRO] Canal de Role Reaction (${ROLE_REACTION_CHANNEL_ID}) não encontrado.`
-      );
     }
   }
 });
@@ -228,6 +245,25 @@ client.on("messageReactionRemove", async (reaction, user) => {
   }
 });
 
+// --- DEBUG FINAL: LISTENER DIRETO DE VOZ ---
+// Este listener é independente da pasta events/loggers e serve para provar se o bot ouve o evento.
+client.on("voiceStateUpdate", (oldState, newState) => {
+  const user = newState.member ? newState.member.user.tag : "Desconhecido";
+  const time = new Date().toLocaleTimeString();
+  console.log(`[TESTE DE VOZ ${time}] Usuário: ${user}`);
+
+  if (newState.channelId && !oldState.channelId)
+    console.log(`-> Entrou no canal: ${newState.channelId}`);
+  if (!newState.channelId && oldState.channelId)
+    console.log(`-> Saiu do canal: ${oldState.channelId}`);
+  if (
+    newState.channelId &&
+    oldState.channelId &&
+    newState.channelId !== oldState.channelId
+  )
+    console.log(`-> Trocou de canal`);
+});
+
 // --- WORKAROUND PARA RENDER (HEALTH CHECK) ---
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -238,18 +274,6 @@ const port = process.env.PORT || 3000;
 
 server.listen(port, () => {
   console.log(`Render health check server running on port ${port}`);
-});
-// --- TESTE DE DEBUG DE VOZ (Adicione no final do index.js) ---
-client.on("voiceStateUpdate", (oldState, newState) => {
-  const user = newState.member ? newState.member.user.tag : "Desconhecido";
-  console.log(`\n[TESTE ABSOLUTO] O evento de voz DISPAROU para: ${user}`);
-  console.log(`Canal Antigo: ${oldState.channelId}`);
-  console.log(`Canal Novo: ${newState.channelId}`);
-
-  // Verifica se a intent está funcionando
-  if (!oldState.guild && !newState.guild) {
-    console.log("ALERTA: Guild não detectada. Intents podem estar desligadas.");
-  }
 });
 
 // --- LOGIN ---

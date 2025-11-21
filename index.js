@@ -4,7 +4,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const http = require("http"); // Adicionado para o health check do Render
+const http = require("http");
 const {
   Client,
   GatewayIntentBits,
@@ -17,8 +17,6 @@ const {
 
 // Carregar Variáveis de Ambiente e Constantes
 const TOKEN = process.env.DISCORD_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
 // Inicialização do Cliente
 const client = new Client({
@@ -27,9 +25,12 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions, // NECESSÁRIO
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildVoiceStates, // Necessário para logs de voz
+    GatewayIntentBits.GuildPresences, // Útil para atualizações de membro
+    GatewayIntentBits.GuildBans, // Necessário para logs de ban
   ],
-  partials: ["MESSAGE", "CHANNEL", "REACTION"], // NECESSÁRIO
+  partials: ["MESSAGE", "CHANNEL", "REACTION", "GUILD_MEMBER", "USER"],
 });
 
 // --- VARIÁVEIS DE MAPEAMENTO GLOBAL ---
@@ -42,7 +43,7 @@ client.config = {
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
   ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
-  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID, // NOVOS CANAIS DE LOG DEDICADOS
+  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID, // CANAIS DE LOG
 
   MEMBER_JOIN_LEAVE_LOG_ID: process.env.MEMBER_JOIN_LEAVE_LOG_ID,
   MESSAGE_EDIT_LOG_ID: process.env.MESSAGE_EDIT_LOG_ID,
@@ -51,6 +52,7 @@ client.config = {
   MOD_MUTE_LOG_ID: process.env.MOD_MUTE_LOG_ID,
   VOICE_LOG_ID: process.env.VOICE_LOG_ID,
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
+  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral (Fallback)
 
   ROLE_MAPPING: {
     "1437889904406433974": "1437891203558277283",
@@ -58,7 +60,7 @@ client.config = {
   },
 };
 
-// --- CARREGAMENTO DE EVENTOS ---
+// --- CARREGAMENTO DE EVENTOS PRINCIPAIS ---
 
 const { startRound } = require("./game/gameManager");
 
@@ -67,6 +69,30 @@ client.on("messageCreate", handleMessageCreate);
 
 const handleInteractionCreate = require("./events/interactionCreate");
 client.on("interactionCreate", handleInteractionCreate);
+
+// --- CARREGAMENTO DE LOGGERS (AUDITORIA) ---
+// Esta parte lê a pasta events/loggers e ativa todos os arquivos de log que criamos
+const loggersPath = path.join(__dirname, "events", "loggers");
+if (fs.existsSync(loggersPath)) {
+  const loggerFiles = fs
+    .readdirSync(loggersPath)
+    .filter((file) => file.endsWith(".js"));
+
+  for (const file of loggerFiles) {
+    const filePath = path.join(loggersPath, file);
+    const logger = require(filePath);
+
+    if (logger.name && logger.execute) {
+      // O truque aqui: passamos 'client' como 1º argumento para os loggers terem acesso à config
+      client.on(logger.name, (...args) => logger.execute(client, ...args));
+      console.log(`[LOGS] Módulo carregado: ${file}`);
+    }
+  }
+} else {
+  console.warn(
+    "[LOGS] Pasta 'events/loggers' não encontrada. Logs de auditoria inativos."
+  );
+}
 
 // --- POSTAGEM DO PAINEL DE VERIFICAÇÃO ---
 async function postVerificationPanel(client) {
@@ -126,51 +152,86 @@ process.on("unhandledRejection", (reason, promise) => {
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
   console.log(`[STATUS] Bot pronto para receber comandos.`);
-  await postVerificationPanel(client); // Força o fetch da mensagem de role reaction (Sincronização de ID)
+  await postVerificationPanel(client); // Força o fetch da mensagem de role reaction
 
   const { ROLE_REACTION_MESSAGE_ID, ROLE_REACTION_CHANNEL_ID } = client.config;
   if (ROLE_REACTION_MESSAGE_ID && ROLE_REACTION_CHANNEL_ID) {
     const channel = client.channels.cache.get(ROLE_REACTION_CHANNEL_ID);
     if (channel?.isTextBased()) {
       try {
-        await channel.messages.fetch(ROLE_REACTION_MESSAGE_ID); // LOG DE SUCESSO
+        await channel.messages.fetch(ROLE_REACTION_MESSAGE_ID);
         console.log(
-          `[SUCESSO] Mensagem de Role Reaction carregada na memória. ID: ${ROLE_REACTION_MESSAGE_ID}`
+          `[SUCESSO] Mensagem de Role Reaction carregada na memória.`
         );
       } catch (err) {
-        // LOG DE ERRO
         console.error(
-          `[ERRO] Falha ao carregar mensagem de Role Reaction (ID: ${ROLE_REACTION_MESSAGE_ID}). Verifique se a mensagem foi deletada.`,
+          `[ERRO] Falha ao carregar mensagem de Role Reaction.`,
           err
         );
       }
-    } else {
-      console.error(
-        `[ERRO] Canal de Role Reaction (ID: ${ROLE_REACTION_CHANNEL_ID}) não encontrado ou não é de texto.`
-      );
     }
   }
 });
 
-// --- HANDLERS DE REAÇÃO DE ADIÇÃO (OK) ---
+// --- HANDLERS DE REAÇÃO (MANTIDOS) ---
 client.on("messageReactionAdd", async (reaction, user) => {
-  // ... (lógica de reação) ...
+  if (user.bot) return;
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+
+  const config = reaction.client.config;
+  const emojiKey = reaction.emoji.id || reaction.emoji.name;
+
+  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) return;
+
+  const roleId = config.ROLE_MAPPING[emojiKey];
+  if (!roleId) return;
+
+  const member = reaction.message.guild.members.cache.get(user.id);
+  const role = reaction.message.guild.roles.cache.get(roleId);
+
+  if (member && role) {
+    try {
+      await member.roles.add(role);
+      console.log(`✅ Cargo ${role.name} adicionado a ${user.tag}`);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 });
 
-// --- HANDLERS DE REAÇÃO DE REMOÇÃO ---
 client.on("messageReactionRemove", async (reaction, user) => {
-  // ... (lógica de remoção de reação) ...
+  if (user.bot) return;
+  if (reaction.partial) await reaction.fetch();
+  if (reaction.message.partial) await reaction.message.fetch();
+
+  const config = reaction.client.config;
+  const emojiKey = reaction.emoji.id || reaction.emoji.name;
+
+  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) return;
+
+  const roleId = config.ROLE_MAPPING[emojiKey];
+  if (!roleId) return;
+
+  const member = reaction.message.guild.members.cache.get(user.id);
+  const role = reaction.message.guild.roles.cache.get(roleId);
+
+  if (member && role && member.roles.cache.has(roleId)) {
+    try {
+      await member.roles.remove(role);
+      console.log(`🗑️ Cargo ${role.name} removido de ${user.tag}`);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 });
 
-// --- WORKAROUND PARA RENDER (HEALTH CHECK) ---
+// --- WORKAROUND PARA RENDER ---
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("MC KEVIN Bot is running and healthy!\n");
 });
-
-// A porta é definida pelo Render (process.env.PORT)
 const port = process.env.PORT || 3000;
-
 server.listen(port, () => {
   console.log(`Render health check server running on port ${port}`);
 });

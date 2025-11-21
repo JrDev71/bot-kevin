@@ -4,19 +4,29 @@ const logEmbed = require("../../utils/logEmbed");
 module.exports = {
   name: "voiceStateUpdate",
   async execute(client, oldState, newState) {
+    // Certifique-se que VOICE_LOG_ID está no seu .env e no index.js
     const channelId = client.config.VOICE_LOG_ID;
     const member = newState.member;
 
-    // Ignora bots se desejar (opcional, mas recomendado para evitar spam de bots de música)
     if (member.user.bot) return;
+
+    // Ignora mute/deafen (já tratado em outro arquivo modVoiceMute.js)
+    // Focamos apenas em ENTRAR, SAIR, MOVER
+    const joined = !oldState.channelId && newState.channelId;
+    const left = oldState.channelId && !newState.channelId;
+    const moved =
+      oldState.channelId &&
+      newState.channelId &&
+      oldState.channelId !== newState.channelId;
+
+    if (!joined && !left && !moved) return;
 
     let title = "";
     let description = "";
     let color = 0;
     const fields = [];
 
-    // 1. ENTROU EM CALL
-    if (!oldState.channelId && newState.channelId) {
+    if (joined) {
       title = "🔊 Entrou em Call";
       description = `**${member.user.tag}** conectou-se a um canal de voz.`;
       color = 0x2ecc71; // Verde
@@ -25,9 +35,7 @@ module.exports = {
         value: `<#${newState.channelId}>`,
         inline: true,
       });
-    }
-    // 2. SAIU DA CALL
-    else if (oldState.channelId && !newState.channelId) {
+    } else if (left) {
       title = "🔇 Saiu da Call";
       description = `**${member.user.tag}** desconectou-se de um canal de voz.`;
       color = 0xe74c3c; // Vermelho
@@ -36,13 +44,7 @@ module.exports = {
         value: `<#${oldState.channelId}>`,
         inline: true,
       });
-    }
-    // 3. MOVEU DE CALL
-    else if (
-      oldState.channelId &&
-      newState.channelId &&
-      oldState.channelId !== newState.channelId
-    ) {
+    } else if (moved) {
       title = "🔄 Trocou de Call";
       description = `**${member.user.tag}** mudou de canal de voz.`;
       color = 0x3498db; // Azul
@@ -51,17 +53,13 @@ module.exports = {
         { name: "Para", value: `<#${newState.channelId}>`, inline: true }
       );
     }
-    // Caso seja apenas mute/unmute ou câmera (não é tráfego), ignoramos aqui.
-    else {
-      return;
-    }
 
-    // Adiciona ID do usuário sempre
     fields.push({ name: "🆔 ID do Usuário", value: member.id, inline: true });
 
+    // CORREÇÃO AQUI: Passando channelId como segundo argumento
     await logEmbed(
       client,
-      channelId,
+      channelId, // <--- O ID VEM AQUI
       title,
       description,
       color,

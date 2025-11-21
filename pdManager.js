@@ -2,6 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 const { EmbedBuilder } = require("discord.js");
+const logEmbed = require("./utils/logEmbed"); // <--- IMPORTAÇÃO DO LOGGER
 
 const PD_FILE = path.resolve(__dirname, "pdData.json");
 const MAX_PDS_PER_STAFF = 2;
@@ -59,32 +60,28 @@ function getPdData() {
 function addPd(pdMemberId, staffMemberId) {
   const data = loadPdData();
 
-  // 1. Checa se o membro já é PD
   if (data.pds.some((pd) => pd.memberId === pdMemberId)) {
     return { success: false, message: "Este membro já é uma Primeira Dama." };
   }
 
-  // 2. Checa o limite do Staff
   const currentCount = data.staffCount[staffMemberId] || 0;
   if (currentCount >= MAX_PDS_PER_STAFF) {
     return {
       success: false,
-      message: `Você já atingiu o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas, guloso👀.`,
+      message: `Você já indicou o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas.`,
     };
   }
 
-  // 3. Adiciona a nova PD
   data.pds.push({
     memberId: pdMemberId,
     staffId: staffMemberId,
     since: Date.now(),
   });
 
-  // 4. Atualiza a contagem do Staff
   data.staffCount[staffMemberId] = currentCount + 1;
 
   savePdData(data);
-  return { success: true, message: "Primeira Dama adicionada com sucesso.✅" };
+  return { success: true, message: "Primeira Dama adicionada com sucesso." };
 }
 
 /**
@@ -100,10 +97,8 @@ function removePd(memberIdToRemove) {
 
   const pdToRemove = data.pds[index];
 
-  // 1. Remove a PD da lista
   data.pds.splice(index, 1);
 
-  // 2. Atualiza a contagem do Staff
   const staffId = pdToRemove.staffId;
   if (data.staffCount[staffId] > 0) {
     data.staffCount[staffId] -= 1;
@@ -123,6 +118,10 @@ async function handlePDCommand(message, command, args) {
   const client = message.client;
   const authorTag = message.author.tag;
 
+  // ID do canal de logs (usa o específico de PD se existir, senão o geral)
+  const logChannelId =
+    client.config.PD_LOG_CHANNEL_ID || client.config.LOG_CHANNEL_ID;
+
   // --- Comando: k!pd (Visualizar PDs Atuais) ---
   if (command === "pd") {
     if (pdData.pds.length === 0) {
@@ -141,14 +140,13 @@ async function handlePDCommand(message, command, args) {
       .setTitle(`👑 Primeiras Damas Atuais do Servidor`)
       .setColor(0xffa500);
 
-    // Usamos um loop para garantir que o fetch de usuários seja esperado antes de enviar
     for (const [index, pd] of pdData.pds.entries()) {
       const pdMember = await message.guild.members
         .fetch(pd.memberId)
         .catch(() => null);
       const staffUser = await client.users.fetch(pd.staffId).catch(() => null);
 
-      const staffTag = staffUser ? staffUser.tag : "Dono Desconhecido";
+      const staffTag = staffUser ? staffUser.tag : "Staff Desconhecido";
       const sinceDate = new Date(pd.since).toLocaleDateString("pt-BR");
 
       if (pdMember) {
@@ -156,7 +154,7 @@ async function handlePDCommand(message, command, args) {
 
         pdEmbed.addFields({
           name: `👸 #${index + 1}: ${pdName}`,
-          value: `**Indicada(o) por:** ${staffTag}\n**Desde:** ${sinceDate}`,
+          value: `**Indicada por:** ${staffTag}\n**Desde:** ${sinceDate}`,
           inline: true,
         });
 
@@ -166,23 +164,21 @@ async function handlePDCommand(message, command, args) {
           );
         }
       } else {
-        // Se o membro PD não for encontrado (saiu do server)
         pdEmbed.addFields({
           name: `❌ PD Antiga (Membro saiu)`,
-          value: `ID: ${pd.memberId} (Indicada(o) por: ${staffTag})`,
+          value: `ID: ${pd.memberId} (Indicada por: ${staffTag})`,
           inline: true,
         });
       }
     }
 
     await message.channel.send({ embeds: [pdEmbed] });
-    // message.delete() já é feito no messageCreate.js
+    if (message.deletable) await message.delete().catch(console.error);
     return;
   }
 
   // --- Comando: k!setpd (@membro ou ID) ---
   if (command === "setpd") {
-    // Checa se o Staff tem a permissão
     const isPermitted = message.member.roles.cache.some((role) =>
       PD_PERMITTED_ROLES.includes(role.id)
     );
@@ -201,10 +197,8 @@ async function handlePDCommand(message, command, args) {
     const memberIdentifier = args[0];
     let newPdMember = message.mentions.members.first();
 
-    // Tenta encontrar por ID se a menção falhou
     if (!newPdMember && memberIdentifier) {
       const rawId = memberIdentifier.replace(/<@!?(\d+)>/, "$1");
-
       if (/^\d+$/.test(rawId)) {
         newPdMember = await message.guild.members
           .fetch(rawId)
@@ -238,7 +232,6 @@ async function handlePDCommand(message, command, args) {
       });
     }
 
-    // Tenta adicionar a PD ao sistema
     const { success, message: managerMessage } = addPd(
       newPdMember.id,
       message.author.id
@@ -251,24 +244,40 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
-      // 1. DÁ O CARGO À NOVA PD
       await newPdMember.roles.add(pdRole);
 
-      // 2. Notifica o Staff e o canal com Embeds de Sucesso
       const remaining =
         MAX_PDS_PER_STAFF - (getPdData().staffCount[message.author.id] || 0);
 
       const successEmbed = createFeedbackEmbed(
         "✅ Sucesso!",
-        `O Dono **${authorTag}** definiu ${newPdMember.user.tag} como sua **Primeira Dama**!\n\n` +
-          `Você ainda pode definir mais **${remaining}** PDs.`,
-        0x00ff00 // Verde
+        `A Staff **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
+          `Você ainda pode indicar mais **${remaining}** PDs.`,
+        0x00ff00
       );
 
       await message.channel.send({ embeds: [successEmbed] });
+
+      // --- LOG DE AUDITORIA (NOVO) ---
+      await logEmbed(
+        client,
+        logChannelId,
+        "👑 Nova Primeira Dama Definida",
+        `**${newPdMember.user.tag}** foi promovida a Primeira Dama.`,
+        0xf1c40f, // Dourado
+        [
+          { name: "👸 PD", value: `<@${newPdMember.id}>`, inline: true },
+          {
+            name: "👮 Indicada por",
+            value: `<@${message.author.id}>`,
+            inline: true,
+          },
+          { name: "🔢 Vagas Restantes", value: `${remaining}`, inline: true },
+        ],
+        newPdMember.user.displayAvatarURL()
+      );
     } catch (error) {
       console.error("Erro ao adicionar cargo de PD:", error);
-      // Se falhar, reverte a contagem no manager para evitar problemas de limite.
       removePd(newPdMember.id);
       return message.channel.send({
         embeds: [
@@ -302,10 +311,8 @@ async function handlePDCommand(message, command, args) {
     const memberIdentifier = args[0];
     let targetMember = message.mentions.members.first();
 
-    // Tenta encontrar por ID se a menção falhou
     if (!targetMember && memberIdentifier) {
       const rawId = memberIdentifier.replace(/<@!?(\d+)>/, "$1");
-
       if (/^\d+$/.test(rawId)) {
         targetMember = await message.guild.members
           .fetch(rawId)
@@ -327,7 +334,6 @@ async function handlePDCommand(message, command, args) {
     const pdRoleId = PD_ROLE_ID;
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
-    // Checa se o membro tem o cargo de PD antes de tentar remover do sistema
     if (!targetMember.roles.cache.has(pdRoleId)) {
       const { success } = removePd(targetMember.id);
       if (success) {
@@ -366,26 +372,47 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
-      // 1. REMOVE O CARGO
       await targetMember.roles.remove(pdRole);
 
-      // 2. Notifica o canal
       const staffTag = pdToRemove.staffId
         ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
-        : "Dono Desconhecido";
+        : "Staff Desconhecido";
       const logMessage = pdToRemove
-        ? `(Indicada(o) por: ${staffTag}, desde: ${new Date(
+        ? `(Indicada por: ${staffTag}, desde: ${new Date(
             pdToRemove.since
           ).toLocaleDateString("pt-BR")})`
         : "";
 
       const removalEmbed = createFeedbackEmbed(
         "💔 PD Removida",
-        `${targetMember.user.tag}🐂 foi removido(a) como Primeira Dama por **${authorTag}**.\n\n${logMessage}`,
-        0xdc7633 // Laranja/Aviso
+        `${targetMember.user.tag} foi removido(a) como Primeira Dama por **${authorTag}**.\n\n${logMessage}`,
+        0xdc7633
       );
 
       await message.channel.send({ embeds: [removalEmbed] });
+
+      // --- LOG DE AUDITORIA (NOVO) ---
+      await logEmbed(
+        client,
+        logChannelId,
+        "💔 Primeira Dama Removida",
+        `**${targetMember.user.tag}** perdeu o status de Primeira Dama.`,
+        0xe74c3c, // Vermelho
+        [
+          { name: "👸 Ex-PD", value: `<@${targetMember.id}>`, inline: true },
+          {
+            name: "👮 Removido por",
+            value: `<@${message.author.id}>`,
+            inline: true,
+          },
+          {
+            name: "📜 Indicada Originalmente por",
+            value: staffTag,
+            inline: true,
+          },
+        ],
+        targetMember.user.displayAvatarURL()
+      );
     } catch (error) {
       console.error("Erro ao remover cargo de PD:", error);
       return message.channel.send({
@@ -402,9 +429,7 @@ async function handlePDCommand(message, command, args) {
 }
 
 module.exports = {
-  // Exporta a função de tratamento de comandos
   handlePDCommand,
-  // Exporta funções de gerenciamento de dados
   getPdData,
   addPd,
   removePd,

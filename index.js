@@ -17,6 +17,8 @@ const {
 
 // Carregar Variáveis de Ambiente e Constantes
 const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 // Inicialização do Cliente
 const client = new Client({
@@ -25,39 +27,33 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildVoiceStates, // <--- CRUCIAL PARA LOGS DE CALL (VOZ)
-    GatewayIntentBits.GuildPresences, // Útil para atualizações de membro
-    GatewayIntentBits.GuildBans, // Necessário para logs de ban
+    GatewayIntentBits.GuildMessageReactions, // NECESSÁRIO
   ],
-  partials: ["MESSAGE", "CHANNEL", "REACTION", "GUILD_MEMBER", "USER"],
+  partials: ["MESSAGE", "CHANNEL", "REACTION"], // NECESSÁRIO
 });
 
 // --- VARIÁVEIS DE MAPEAMENTO GLOBAL ---
 client.config = {
-  // Configurações de Verificação
   VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
   APPROVER_ROLE_ID: process.env.APPROVER_ROLE_ID,
   SECONDARY_APPROVER_ROLE_ID: process.env.SECONDARY_APPROVER_ROLE_ID,
 
-  // Canais de Fluxo de Verificação
   APPROVAL_CHANNEL_ID: process.env.APPROVAL_CHANNEL_ID,
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
   ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
-  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID,
+  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID, // --- CANAIS DE LOG DEDICADOS (AUDITORIA) ---
 
-  // --- CANAIS DE LOG DEDICADOS (AUDITORIA) ---
   MEMBER_JOIN_LEAVE_LOG_ID: process.env.MEMBER_JOIN_LEAVE_LOG_ID,
   MESSAGE_EDIT_LOG_ID: process.env.MESSAGE_EDIT_LOG_ID,
   MESSAGE_DELETE_LOG_ID: process.env.MESSAGE_DELETE_LOG_ID,
   MOD_BAN_LOG_ID: process.env.MOD_BAN_LOG_ID,
   MOD_MUTE_LOG_ID: process.env.MOD_MUTE_LOG_ID,
-  VOICE_LOG_ID: process.env.VOICE_LOG_ID, // <--- VERIFIQUE SE ISSO ESTÁ NO SEU .ENV
+  VOICE_LOG_ID: process.env.VOICE_LOG_ID,
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
-  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral
+  PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID, // <--- NOVO: Log de PD
+  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral (Fallback)
 
-  // Role Reaction Mapping
   ROLE_MAPPING: {
     "1437889904406433974": "1437891203558277283",
     "1437889927613517975": "1437891278690975878",
@@ -201,8 +197,6 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (member && role) {
     try {
       await member.roles.add(role);
-      // Console log opcional para não poluir o terminal em produção
-      // console.log(`✅ Cargo ${role.name} adicionado a ${user.tag}`);
     } catch (err) {
       console.error("Erro ao adicionar cargo:", err.message);
     }

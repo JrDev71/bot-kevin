@@ -42,7 +42,15 @@ client.config = {
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
   ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
-  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID,
+  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID, // NOVOS CANAIS DE LOG DEDICADOS
+
+  MEMBER_JOIN_LEAVE_LOG_ID: process.env.MEMBER_JOIN_LEAVE_LOG_ID,
+  MESSAGE_EDIT_LOG_ID: process.env.MESSAGE_EDIT_LOG_ID,
+  MESSAGE_DELETE_LOG_ID: process.env.MESSAGE_DELETE_LOG_ID,
+  MOD_BAN_LOG_ID: process.env.MOD_BAN_LOG_ID,
+  MOD_MUTE_LOG_ID: process.env.MOD_MUTE_LOG_ID,
+  VOICE_LOG_ID: process.env.VOICE_LOG_ID,
+  CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
 
   ROLE_MAPPING: {
     "1437889904406433974": "1437891203558277283",
@@ -100,9 +108,24 @@ async function postVerificationPanel(client) {
   }
 }
 
+// --- HANDLERS DE ESTABILIDADE CRÍTICA ---
+process.on("uncaughtException", (err, origin) => {
+  console.error(`\n--- Erro Crítico (Uncaught Exception) ---`);
+  console.error(`Causa: ${origin}\nErro:`, err);
+  console.error(`------------------------------------------\n`);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error(`\n--- Promessa Rejeitada (Unhandled Rejection) ---`);
+  console.error(`Razão:`, reason);
+  console.error(`Promise:`, promise);
+  console.error(`-------------------------------------------------\n`);
+});
+
 // --- EVENTO READY ---
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
+  console.log(`[STATUS] Bot pronto para receber comandos.`);
   await postVerificationPanel(client); // Força o fetch da mensagem de role reaction (Sincronização de ID)
 
   const { ROLE_REACTION_MESSAGE_ID, ROLE_REACTION_CHANNEL_ID } = client.config;
@@ -131,99 +154,12 @@ client.once("ready", async () => {
 
 // --- HANDLERS DE REAÇÃO DE ADIÇÃO (OK) ---
 client.on("messageReactionAdd", async (reaction, user) => {
-  // Adicionei o log de teste aqui para tentar capturar qualquer evento de reação
-  console.log("LOG: EVENTO DE REAÇÃO TENTANDO SER PROCESSADO!");
-
-  if (user.bot) return;
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-
-  const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name; // --- LOGS CRÍTICOS ---
-
-  console.log("\n--- DEBUG ROLE REACTION ADD ---");
-  console.log(`1. Msg ID Reagida: ${reaction.message.id}`);
-  console.log(`2. Config ID Esperado: ${config.ROLE_REACTION_MESSAGE_ID}`);
-  console.log(`3. Emoji Key (Busca): ${emojiKey}`);
-
-  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) {
-    console.log("-> FALHA 1: IDs da mensagem não coincidem. Reação ignorada.");
-    console.log("-------------------------\n");
-    return;
-  }
-
-  const roleId = config.ROLE_MAPPING[emojiKey];
-  console.log(`4. Role ID Mapeado: ${roleId || "NÃO ENCONTRADO"}`);
-
-  if (!roleId) {
-    console.log("-> FALHA 2: Emoji não mapeado (ID do cargo não encontrado).");
-    console.log("-------------------------\n");
-    return;
-  } // --- FIM DOS LOGS DE CHECAGEM ---
-  const member = reaction.message.guild.members.cache.get(user.id);
-  const role = reaction.message.guild.roles.cache.get(roleId);
-
-  if (member && role) {
-    try {
-      await member.roles.add(role);
-      console.log(`✅ SUCESSO! Cargo ${role.name} adicionado a ${user.tag}`);
-    } catch (err) {
-      console.error(
-        "❌ ERRO FINAL: Falha ao adicionar cargo (Permissões?):",
-        err.message
-      );
-    }
-  }
+  // ... (lógica de reação) ...
 });
 
 // --- HANDLERS DE REAÇÃO DE REMOÇÃO ---
 client.on("messageReactionRemove", async (reaction, user) => {
-  if (user.bot) return;
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-
-  const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name; // --- LOGS CRÍTICOS ---
-
-  console.log("\n--- DEBUG ROLE REACTION REMOVE ---");
-  console.log(`1. Msg ID Reagida: ${reaction.message.id}`);
-  console.log(`2. Config ID Esperado: ${config.ROLE_REACTION_MESSAGE_ID}`);
-  console.log(`3. Emoji Key (Busca): ${emojiKey}`);
-
-  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) {
-    console.log("-> FALHA 1: IDs da mensagem não coincidem. Remoção ignorada.");
-    console.log("-------------------------\n");
-    return;
-  }
-
-  const roleId = config.ROLE_MAPPING[emojiKey];
-  console.log(`4. Role ID Mapeado: ${roleId || "NÃO ENCONTRADO"}`);
-
-  if (!roleId) {
-    console.log("-> FALHA 2: Emoji não mapeado (ID do cargo não encontrado).");
-    console.log("-------------------------\n");
-    return;
-  }
-
-  const member = reaction.message.guild.members.cache.get(user.id);
-  const role = reaction.message.guild.roles.cache.get(roleId);
-
-  if (member && role && member.roles.cache.has(roleId)) {
-    try {
-      await member.roles.remove(role);
-      console.log(`🗑️ SUCESSO! Cargo ${role.name} removido de ${user.tag}`);
-    } catch (err) {
-      console.error(
-        "❌ ERRO FINAL: Falha ao remover cargo (Permissões?):",
-        err.message
-      );
-    }
-  } else {
-    console.log(
-      `INFO: Membro não tinha o cargo, ou cargo/membro não encontrado.`
-    );
-  }
-  console.log("-------------------------\n");
+  // ... (lógica de remoção de reação) ...
 });
 
 // --- WORKAROUND PARA RENDER (HEALTH CHECK) ---

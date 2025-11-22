@@ -4,7 +4,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const http = require("http"); // Health check do Render
+const http = require("http"); // Adicionado para o health check do Render
 const {
   Client,
   GatewayIntentBits,
@@ -16,25 +16,23 @@ const {
   Partials,
 } = require("discord.js");
 
+// Importação do Gerenciador VIP para checagem de validade
+const { checkExpiredVips } = require("./vipManager");
+
 // Carregar Variáveis de Ambiente
 const TOKEN = process.env.DISCORD_TOKEN;
 
-// --- INICIALIZAÇÃO DO CLIENTE (COM TODAS AS INTENTS) ---
+// Inicialização do Cliente
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers, // Necessário para ver quem entra/sai
+    GatewayIntentBits.GuildMembers, // Necessário para ver quem entra/sai/vip
     GatewayIntentBits.GuildBans, // Necessário para logs de ban
-    GatewayIntentBits.GuildEmojisAndStickers,
-    GatewayIntentBits.GuildIntegrations,
-    GatewayIntentBits.GuildWebhooks,
-    GatewayIntentBits.GuildInvites,
-    GatewayIntentBits.GuildVoiceStates, // <--- CRUCIAL PARA LOGS DE CALL
-    GatewayIntentBits.GuildPresences, // Necessário para atualizações de status
+    GatewayIntentBits.GuildVoiceStates, // Necessário para logs de voz
+    GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
   ],
   partials: [
     Partials.Message,
@@ -65,10 +63,10 @@ client.config = {
   MESSAGE_DELETE_LOG_ID: process.env.MESSAGE_DELETE_LOG_ID,
   MOD_BAN_LOG_ID: process.env.MOD_BAN_LOG_ID,
   MOD_MUTE_LOG_ID: process.env.MOD_MUTE_LOG_ID,
-  VOICE_LOG_ID: process.env.VOICE_LOG_ID, // Verifique se esta variável existe no .env
+  VOICE_LOG_ID: process.env.VOICE_LOG_ID,
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
   PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID,
-  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
+  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral
 
   // Role Mapping (Role Reaction)
   ROLE_MAPPING: {
@@ -78,8 +76,6 @@ client.config = {
 };
 
 // --- CARREGAMENTO DE EVENTOS PRINCIPAIS ---
-
-const { startRound } = require("./game/gameManager"); // Apenas carrega para garantir cache se necessário
 
 const handleMessageCreate = require("./events/messageCreate");
 client.on("messageCreate", handleMessageCreate);
@@ -99,7 +95,6 @@ if (fs.existsSync(loggersPath)) {
     try {
       const logger = require(filePath);
       if (logger.name && logger.execute) {
-        // Passa 'client' como 1º argumento para acesso às configs
         client.on(logger.name, (...args) => logger.execute(client, ...args));
         console.log(`[LOGS] Módulo carregado: ${file}`);
       }
@@ -159,22 +154,17 @@ process.on("uncaughtException", (err, origin) => {
 process.on("unhandledRejection", (reason, promise) => {
   console.error(`\n--- Promessa Rejeitada (Unhandled Rejection) ---`);
   console.error(`Razão:`, reason);
-  // console.error(`Promise:`, promise); // Opcional para reduzir spam
   console.error(`-------------------------------------------------\n`);
 });
 
 // --- EVENTO READY ---
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
-
-  // Validação rápida de permissões de voz
-  console.log("[DEBUG] Verificando Intent de Voz...");
-  // Não há uma propriedade direta para ler intents ativas facilmente após init,
-  // mas se chegamos aqui, o cliente logou.
+  console.log(`[STATUS] Bot pronto para receber comandos.`);
 
   await postVerificationPanel(client);
 
-  // Força o fetch da mensagem de role reaction
+  // 1. Força o fetch da mensagem de role reaction
   const { ROLE_REACTION_MESSAGE_ID, ROLE_REACTION_CHANNEL_ID } = client.config;
   if (ROLE_REACTION_MESSAGE_ID && ROLE_REACTION_CHANNEL_ID) {
     const channel = client.channels.cache.get(ROLE_REACTION_CHANNEL_ID);
@@ -192,6 +182,15 @@ client.once("ready", async () => {
       }
     }
   }
+
+  // 2. Inicia o verificador de VIPs expirados
+  console.log("[SISTEMA VIP] Iniciando verificador de validade...");
+  checkExpiredVips(client); // Roda imediatamente ao ligar
+
+  // Roda a cada 1 hora (3600 segundos * 1000 ms)
+  setInterval(() => {
+    checkExpiredVips(client);
+  }, 3600 * 1000);
 });
 
 // --- HANDLERS DE REAÇÃO (Role Reaction) ---
@@ -201,7 +200,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
   if (reaction.message.partial) await reaction.message.fetch();
 
   const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name;
+  const emojiKey = reaction.emoji.id || reaction.emoji.name; // Usa ID ou Nome
 
   if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) return;
 
@@ -243,25 +242,6 @@ client.on("messageReactionRemove", async (reaction, user) => {
       console.error("Erro ao remover cargo:", err.message);
     }
   }
-});
-
-// --- DEBUG FINAL: LISTENER DIRETO DE VOZ ---
-// Este listener é independente da pasta events/loggers e serve para provar se o bot ouve o evento.
-client.on("voiceStateUpdate", (oldState, newState) => {
-  const user = newState.member ? newState.member.user.tag : "Desconhecido";
-  const time = new Date().toLocaleTimeString();
-  console.log(`[TESTE DE VOZ ${time}] Usuário: ${user}`);
-
-  if (newState.channelId && !oldState.channelId)
-    console.log(`-> Entrou no canal: ${newState.channelId}`);
-  if (!newState.channelId && oldState.channelId)
-    console.log(`-> Saiu do canal: ${oldState.channelId}`);
-  if (
-    newState.channelId &&
-    oldState.channelId &&
-    newState.channelId !== oldState.channelId
-  )
-    console.log(`-> Trocou de canal`);
 });
 
 // --- WORKAROUND PARA RENDER (HEALTH CHECK) ---

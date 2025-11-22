@@ -2,13 +2,14 @@
 const fs = require("fs");
 const path = require("path");
 const { EmbedBuilder } = require("discord.js");
-const logEmbed = require("./utils/logEmbed"); // <--- IMPORTAÇÃO DO LOGGER
+const logEmbed = require("./utils/logEmbed"); // Importa o sistema de logs
 
+// Caminho para o arquivo de banco de dados JSON
 const PD_FILE = path.resolve(__dirname, "pdData.json");
 const MAX_PDS_PER_STAFF = 2;
 const PREFIX = "k!";
 
-// IDs hardcoded para manter o módulo self-contained
+// IDs hardcoded (Conforme configurado anteriormente)
 const PD_ROLE_ID = "1435040530701746236";
 const PD_PERMITTED_ROLES = [
   "1435040516814147715",
@@ -17,7 +18,7 @@ const PD_PERMITTED_ROLES = [
   "1435040519918059521",
 ];
 
-// --- UTILITY: Função auxiliar para criar embeds de feedback ---
+// --- UTILITY ---
 const createFeedbackEmbed = (title, description, color = 0xff0000) => {
   return new EmbedBuilder()
     .setTitle(title)
@@ -30,10 +31,7 @@ const createFeedbackEmbed = (title, description, color = 0xff0000) => {
 
 function loadPdData() {
   if (!fs.existsSync(PD_FILE)) {
-    return {
-      pds: [],
-      staffCount: {},
-    };
+    return { pds: [], staffCount: {} };
   }
   try {
     const data = fs.readFileSync(PD_FILE, "utf-8");
@@ -54,16 +52,15 @@ function getPdData() {
   return loadPdData();
 }
 
-/**
- * Adiciona uma nova Primeira Dama (PD).
- */
 function addPd(pdMemberId, staffMemberId) {
   const data = loadPdData();
 
+  // 1. Checa se o membro já é PD
   if (data.pds.some((pd) => pd.memberId === pdMemberId)) {
     return { success: false, message: "Este membro já é uma Primeira Dama." };
   }
 
+  // 2. Checa o limite do Staff
   const currentCount = data.staffCount[staffMemberId] || 0;
   if (currentCount >= MAX_PDS_PER_STAFF) {
     return {
@@ -72,21 +69,20 @@ function addPd(pdMemberId, staffMemberId) {
     };
   }
 
+  // 3. Adiciona a nova PD
   data.pds.push({
     memberId: pdMemberId,
     staffId: staffMemberId,
     since: Date.now(),
   });
 
+  // 4. Atualiza a contagem do Staff
   data.staffCount[staffMemberId] = currentCount + 1;
 
   savePdData(data);
   return { success: true, message: "Primeira Dama adicionada com sucesso." };
 }
 
-/**
- * Remove uma PD pelo ID do membro.
- */
 function removePd(memberIdToRemove) {
   const data = loadPdData();
 
@@ -97,8 +93,10 @@ function removePd(memberIdToRemove) {
 
   const pdToRemove = data.pds[index];
 
+  // 1. Remove a PD da lista
   data.pds.splice(index, 1);
 
+  // 2. Atualiza a contagem do Staff
   const staffId = pdToRemove.staffId;
   if (data.staffCount[staffId] > 0) {
     data.staffCount[staffId] -= 1;
@@ -118,7 +116,7 @@ async function handlePDCommand(message, command, args) {
   const client = message.client;
   const authorTag = message.author.tag;
 
-  // ID do canal de logs (usa o específico de PD se existir, senão o geral)
+  // Define o canal de log (Prioriza o canal de PD, senão usa o Geral)
   const logChannelId =
     client.config.PD_LOG_CHANNEL_ID || client.config.LOG_CHANNEL_ID;
 
@@ -173,7 +171,6 @@ async function handlePDCommand(message, command, args) {
     }
 
     await message.channel.send({ embeds: [pdEmbed] });
-    if (message.deletable) await message.delete().catch(console.error);
     return;
   }
 
@@ -244,27 +241,28 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
+      // 1. Dá o cargo
       await newPdMember.roles.add(pdRole);
 
       const remaining =
         MAX_PDS_PER_STAFF - (getPdData().staffCount[message.author.id] || 0);
 
+      // 2. Feedback no Chat
       const successEmbed = createFeedbackEmbed(
         "✅ Sucesso!",
         `A Staff **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
           `Você ainda pode indicar mais **${remaining}** PDs.`,
         0x00ff00
       );
-
       await message.channel.send({ embeds: [successEmbed] });
 
-      // --- LOG DE AUDITORIA (NOVO) ---
+      // 3. Log de Auditoria
       await logEmbed(
         client,
         logChannelId,
         "👑 Nova Primeira Dama Definida",
         `**${newPdMember.user.tag}** foi promovida a Primeira Dama.`,
-        0xf1c40f, // Dourado
+        0xf1c40f,
         [
           { name: "👸 PD", value: `<@${newPdMember.id}>`, inline: true },
           {
@@ -278,7 +276,7 @@ async function handlePDCommand(message, command, args) {
       );
     } catch (error) {
       console.error("Erro ao adicionar cargo de PD:", error);
-      removePd(newPdMember.id);
+      removePd(newPdMember.id); // Reverte DB se falhar no Discord
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
@@ -334,6 +332,7 @@ async function handlePDCommand(message, command, args) {
     const pdRoleId = PD_ROLE_ID;
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
+    // Se o membro não tem o cargo, tentamos remover apenas do DB
     if (!targetMember.roles.cache.has(pdRoleId)) {
       const { success } = removePd(targetMember.id);
       if (success) {
@@ -372,32 +371,29 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
+      // 1. Remove o cargo
       await targetMember.roles.remove(pdRole);
 
-      const staffTag = pdToRemove.staffId
+      const staffTag = pdToRemove?.staffId
         ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
-        : "Staff Desconhecido";
-      const logMessage = pdToRemove
-        ? `(Indicada por: ${staffTag}, desde: ${new Date(
-            pdToRemove.since
-          ).toLocaleDateString("pt-BR")})`
-        : "";
+        : "???";
+      const logMessage = pdToRemove ? `(Indicada por: ${staffTag})` : "";
 
+      // 2. Feedback no Chat
       const removalEmbed = createFeedbackEmbed(
         "💔 PD Removida",
         `${targetMember.user.tag} foi removido(a) como Primeira Dama por **${authorTag}**.\n\n${logMessage}`,
         0xdc7633
       );
-
       await message.channel.send({ embeds: [removalEmbed] });
 
-      // --- LOG DE AUDITORIA (NOVO) ---
+      // 3. Log de Auditoria
       await logEmbed(
         client,
         logChannelId,
         "💔 Primeira Dama Removida",
         `**${targetMember.user.tag}** perdeu o status de Primeira Dama.`,
-        0xe74c3c, // Vermelho
+        0xe74c3c,
         [
           { name: "👸 Ex-PD", value: `<@${targetMember.id}>`, inline: true },
           {

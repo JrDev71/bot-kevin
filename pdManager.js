@@ -2,14 +2,14 @@
 const fs = require("fs");
 const path = require("path");
 const { EmbedBuilder } = require("discord.js");
-const logEmbed = require("./utils/logEmbed"); // Importa o sistema de logs
+const logEmbed = require("./utils/logEmbed");
 
 // Caminho para o arquivo de banco de dados JSON
 const PD_FILE = path.resolve(__dirname, "pdData.json");
 const MAX_PDS_PER_STAFF = 2;
 const PREFIX = "k!";
 
-// IDs hardcoded (Conforme configurado anteriormente)
+// IDs hardcoded
 const PD_ROLE_ID = "1435040530701746236";
 const PD_PERMITTED_ROLES = [
   "1435040516814147715",
@@ -116,7 +116,6 @@ async function handlePDCommand(message, command, args) {
   const client = message.client;
   const authorTag = message.author.tag;
 
-  // Define o canal de log (Prioriza o canal de PD, senão usa o Geral)
   const logChannelId =
     client.config.PD_LOG_CHANNEL_ID || client.config.LOG_CHANNEL_ID;
 
@@ -138,6 +137,7 @@ async function handlePDCommand(message, command, args) {
       .setTitle(`👑 Primeiras Damas Atuais do Servidor`)
       .setColor(0xffa500);
 
+    // Loop para adicionar os campos
     for (const [index, pd] of pdData.pds.entries()) {
       const pdMember = await message.guild.members
         .fetch(pd.memberId)
@@ -170,6 +170,7 @@ async function handlePDCommand(message, command, args) {
       }
     }
 
+    // CORREÇÃO: Envio da mensagem FORA do loop
     await message.channel.send({ embeds: [pdEmbed] });
     return;
   }
@@ -241,22 +242,20 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
-      // 1. Dá o cargo
       await newPdMember.roles.add(pdRole);
 
       const remaining =
         MAX_PDS_PER_STAFF - (getPdData().staffCount[message.author.id] || 0);
 
-      // 2. Feedback no Chat
       const successEmbed = createFeedbackEmbed(
         "✅ Sucesso!",
         `A Staff **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
           `Você ainda pode indicar mais **${remaining}** PDs.`,
         0x00ff00
       );
+
       await message.channel.send({ embeds: [successEmbed] });
 
-      // 3. Log de Auditoria
       await logEmbed(
         client,
         logChannelId,
@@ -276,7 +275,7 @@ async function handlePDCommand(message, command, args) {
       );
     } catch (error) {
       console.error("Erro ao adicionar cargo de PD:", error);
-      removePd(newPdMember.id); // Reverte DB se falhar no Discord
+      removePd(newPdMember.id);
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
@@ -332,7 +331,6 @@ async function handlePDCommand(message, command, args) {
     const pdRoleId = PD_ROLE_ID;
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
-    // Se o membro não tem o cargo, tentamos remover apenas do DB
     if (!targetMember.roles.cache.has(pdRoleId)) {
       const { success } = removePd(targetMember.id);
       if (success) {
@@ -371,23 +369,25 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
-      // 1. Remove o cargo
       await targetMember.roles.remove(pdRole);
 
-      const staffTag = pdToRemove?.staffId
+      const staffTag = pdToRemove.staffId
         ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
-        : "???";
-      const logMessage = pdToRemove ? `(Indicada por: ${staffTag})` : "";
+        : "Staff Desconhecido";
+      const logMessage = pdToRemove
+        ? `(Indicada por: ${staffTag}, desde: ${new Date(
+            pdToRemove.since
+          ).toLocaleDateString("pt-BR")})`
+        : "";
 
-      // 2. Feedback no Chat
       const removalEmbed = createFeedbackEmbed(
         "💔 PD Removida",
         `${targetMember.user.tag} foi removido(a) como Primeira Dama por **${authorTag}**.\n\n${logMessage}`,
         0xdc7633
       );
+
       await message.channel.send({ embeds: [removalEmbed] });
 
-      // 3. Log de Auditoria
       await logEmbed(
         client,
         logChannelId,

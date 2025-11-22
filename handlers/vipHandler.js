@@ -119,7 +119,7 @@ module.exports = async (interaction) => {
           await member.roles.add(role);
           updateVipData(interaction.user.id, { customRoleId: role.id });
 
-          // [NOVO] Se o canal já existe, adiciona permissão para a nova tag
+          // Atualiza permissão do canal se já existir
           if (vipData.customChannelId) {
             const channel = await interaction.guild.channels
               .fetch(vipData.customChannelId)
@@ -139,10 +139,11 @@ module.exports = async (interaction) => {
       }
     }
 
-    // --- B. CONFIGURAR CANAL ---
+    // --- B. CONFIGURAR CANAL (PERMISSÕES ATUALIZADAS) ---
     else if (interaction.customId === MODAL_CHANNEL) {
       const channelName = interaction.fields.getTextInputValue("channel_name");
       const categoryId = process.env.VIP_CATEGORY_ID;
+      const verifiedRoleId = process.env.VERIFIED_ROLE_ID; // Pega o ID do cargo verificado do .env
 
       if (channelName.toLowerCase() === "deletar" && vipData.customChannelId) {
         const ch = await interaction.guild.channels
@@ -169,28 +170,43 @@ module.exports = async (interaction) => {
               "⚠️ Configure VIP_CATEGORY_ID no .env"
             );
 
-          // Define as permissões iniciais
+          // --- DEFINIÇÃO DE PERMISSÕES ---
           const overwrites = [
+            // 1. EVERYONE: Não vê, não conecta
             {
               id: interaction.guild.id,
-              deny: [PermissionsBitField.Flags.Connect],
+              deny: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+              ],
             },
+            // 2. DONO (VIP): Vê, Conecta, Gerencia
             {
               id: interaction.user.id,
               allow: [
+                PermissionsBitField.Flags.ViewChannel,
                 PermissionsBitField.Flags.Connect,
                 PermissionsBitField.Flags.ManageChannels,
               ],
             },
           ];
 
-          // [NOVO] Se a Tag já existe, adiciona permissão para ela na criação
+          // 3. VERIFICADO (Membros Comuns): Vê, mas NÃO conecta
+          if (verifiedRoleId) {
+            overwrites.push({
+              id: verifiedRoleId,
+              allow: [PermissionsBitField.Flags.ViewChannel], // Pode Ver
+              deny: [PermissionsBitField.Flags.Connect], // Não pode Entrar
+            });
+          }
+
+          // 4. TAG DO VIP (Amigos): Vê e Conecta
           if (vipData.customRoleId) {
             overwrites.push({
               id: vipData.customRoleId,
               allow: [
-                PermissionsBitField.Flags.Connect,
                 PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
               ],
             });
           }
@@ -202,9 +218,12 @@ module.exports = async (interaction) => {
             permissionOverwrites: overwrites,
           });
           updateVipData(interaction.user.id, { customChannelId: channel.id });
-          interaction.editReply("✅ Canal criado!");
+          interaction.editReply(
+            "✅ Canal criado! (Visível para verificados, trancado para estranhos)"
+          );
         }
       } catch (e) {
+        console.error(e);
         interaction.editReply("❌ Erro ao criar canal.");
       }
     }

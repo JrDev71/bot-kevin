@@ -19,22 +19,24 @@ module.exports = async (interaction) => {
   const isButton = interaction.isButton();
   const isModal = interaction.isModalSubmit();
 
-  // 1. Botão "Verificar" -> Modal
+  // 1. CLIQUE NO BOTÃO "VERIFICAR" (Abre o Modal)
   if (isButton && interaction.customId === VERIFY_BUTTON_ID) {
     const modal = new ModalBuilder()
       .setCustomId("referral_modal")
       .setTitle("Formulário de referência");
+
     const referredUser = new TextInputBuilder()
       .setCustomId("referred_user_input")
       .setLabel("Quem você conhece? (Nome ou ID)")
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
+
     modal.addComponents(new ActionRowBuilder().addComponents(referredUser));
     await interaction.showModal(modal);
-    return true; // Retorna true para parar o processamento no index
+    return true;
   }
 
-  // 2. Envio do Modal
+  // 2. ENVIO DO MODAL (Envia Ficha para Staff)
   if (isModal && interaction.customId === "referral_modal") {
     await interaction.deferReply({ ephemeral: true });
     const referredUsername = interaction.fields.getTextInputValue(
@@ -44,11 +46,12 @@ module.exports = async (interaction) => {
       config.APPROVAL_CHANNEL_ID
     );
 
-    if (!approvalChannel)
+    if (!approvalChannel) {
       return interaction.followUp({
         content: "Erro interno: Canal de aprovação não configurado.",
         ephemeral: true,
       });
+    }
 
     const approvalEmbed = new EmbedBuilder()
       .setTitle(`👤 Nova Ficha: ${interaction.user.tag}`)
@@ -74,8 +77,15 @@ module.exports = async (interaction) => {
         .setStyle(ButtonStyle.Danger)
     );
 
+    // Monta a menção para a Staff
+    let mentions = "";
+    if (config.APPROVER_ROLE_ID) mentions += `<@&${config.APPROVER_ROLE_ID}> `;
+    if (config.SECONDARY_APPROVER_ROLE_ID)
+      mentions += `<@&${config.SECONDARY_APPROVER_ROLE_ID}>`;
+    if (!mentions) mentions = "@Staff";
+
     await approvalChannel.send({
-      content: `<@&${config.APPROVER_ROLE_ID}>`,
+      content: mentions,
       embeds: [approvalEmbed],
       components: [row],
     });
@@ -86,24 +96,33 @@ module.exports = async (interaction) => {
     return true;
   }
 
-  // 3. Aprovar/Rejeitar
+  // 3. BOTÕES APROVAR/REJEITAR
   if (
     isButton &&
     [APPROVE_BUTTON_ID, REJECT_BUTTON_ID].includes(interaction.customId)
   ) {
-    await interaction.deferUpdate();
-    const hasPerm =
-      interaction.member.roles.cache.has(config.APPROVER_ROLE_ID) ||
-      interaction.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      );
-    if (!hasPerm)
-      return interaction.followUp({
-        content: "Sem permissão.",
+    // Verifica Permissões (Cargo 1, Cargo 2 ou Admin)
+    const hasPrimary =
+      config.APPROVER_ROLE_ID &&
+      interaction.member.roles.cache.has(config.APPROVER_ROLE_ID);
+    const hasSecondary =
+      config.SECONDARY_APPROVER_ROLE_ID &&
+      interaction.member.roles.cache.has(config.SECONDARY_APPROVER_ROLE_ID);
+    const isAdmin = interaction.member.permissions.has(
+      PermissionsBitField.Flags.Administrator
+    );
+
+    if (!hasPrimary && !hasSecondary && !isAdmin) {
+      return interaction.reply({
+        content: "❌ Você não tem permissão para aprovar/rejeitar.",
         ephemeral: true,
       });
+    }
+
+    await interaction.deferUpdate();
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+    // Extrai ID com Regex
     const targetId = embed.data.fields
       .find((f) => f.name === "Membro")
       .value.match(/\((\d+)\)/)?.[1];
@@ -120,33 +139,47 @@ module.exports = async (interaction) => {
     }
 
     if (interaction.customId === APPROVE_BUTTON_ID) {
-      await member.roles.add(config.VERIFIED_ROLE_ID).catch(console.error);
-      embed
-        .setColor(0x00ff00)
-        .data.fields.find(
-          (f) => f.name === "Status"
-        ).value = `✅ APROVADO por ${interaction.user.tag}`;
+      // Aprovar: Dá cargo e loga
+      try {
+        await member.roles.add(config.VERIFIED_ROLE_ID);
+        embed
+          .setColor(0x00ff00)
+          .data.fields.find(
+            (f) => f.name === "Status"
+          ).value = `✅ APROVADO por ${interaction.user.tag}`;
 
-      const logChannel = interaction.guild.channels.cache.get(
-        config.APPROVED_LOG_CHANNEL_ID
-      );
-      if (logChannel)
-        logChannel.send({ content: `✅ Aprovado: ${member}`, embeds: [embed] });
+        const logChannel = interaction.guild.channels.cache.get(
+          config.APPROVED_LOG_CHANNEL_ID
+        );
+        if (logChannel)
+          logChannel.send({
+            content: `✅ Aprovado: ${member}`,
+            embeds: [embed],
+          });
+      } catch (error) {
+        console.error("Erro ao dar cargo de verificado:", error);
+        embed.data.fields.find((f) => f.name === "Status").value =
+          "ERRO AO DAR CARGO";
+        await interaction.followUp({
+          content: "❌ Erro ao dar o cargo. Verifique a hierarquia.",
+          ephemeral: true,
+        });
+      }
     } else {
+      // Rejeitar: Avisa user
       embed
         .setColor(0xff0000)
         .data.fields.find(
           (f) => f.name === "Status"
         ).value = `❌ REJEITADO por ${interaction.user.tag}`;
       member
-        .send(
-          `Sua verificação em **${interaction.guild.name}** foi rejeitada, sai fora paneleiro.`
-        )
+        .send(`Sua verificação em **${interaction.guild.name}** foi rejeitada.`)
         .catch(() => {});
     }
+
     await interaction.editReply({ embeds: [embed], components: [] });
     return true;
   }
 
-  return false; // Não processou nada
+  return false; // Interação não é deste handler
 };

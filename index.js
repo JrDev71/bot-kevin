@@ -256,5 +256,28 @@ server.listen(port, () => {
   console.log(`Render health check server running on port ${port}`);
 });
 
+// --- CARREGAMENTO DE SEGURANÇA (ANTI-NUKE) ---
+const securityPath = path.join(__dirname, "events", "security");
+if (fs.existsSync(securityPath)) {
+  const securityFiles = fs
+    .readdirSync(securityPath)
+    .filter((file) => file.endsWith(".js"));
+
+  for (const file of securityFiles) {
+    const filePath = path.join(securityPath, file);
+    try {
+      const securityEvent = require(filePath);
+      if (securityEvent.name && securityEvent.execute) {
+        client.on(securityEvent.name, (...args) =>
+          securityEvent.execute(client, ...args)
+        );
+        console.log(`[SECURITY] Módulo carregado: ${file}`);
+      }
+    } catch (e) {
+      console.error(`[SECURITY] Erro ao carregar ${file}:`, e);
+    }
+  }
+}
+
 // --- LOGIN ---
 client.login(TOKEN);

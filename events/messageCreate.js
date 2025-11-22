@@ -1,18 +1,18 @@
 // events/messageCreate.js
 const { EmbedBuilder } = require("discord.js");
 
-// --- IMPORTAÇÕES DOS SISTEMAS ---
+// --- IMPORTAÇÕES DOS SISTEMAS DE JOGO E ESTADO ---
 const { getGameState } = require("../game/gameState");
 const { calculateScores, postReviewEmbed } = require("../game/scoreSystem");
 const { startRound } = require("../game/gameManager");
 const { handlePDCommand } = require("../pdManager");
 
-// --- IMPORTAÇÕES DE HANDLERS ---
+// --- IMPORTAÇÕES DE HANDLERS (SEGURANÇA) ---
 const handleMention = require("../handlers/mentionHandler");
 const handleAntiSpam = require("../handlers/antiSpamHandler");
 const handleChatProtection = require("../handlers/chatProtectionHandler");
 
-// --- IMPORTAÇÕES DOS COMANDOS ---
+// --- IMPORTAÇÕES DOS COMANDOS (Módulos externos) ---
 const { handleAvatar } = require("../commands/avatar");
 const { handleRepeat } = require("../commands/repeat");
 const { handleVipCommands } = require("../commands/vip");
@@ -26,17 +26,17 @@ const {
   handleUnjail,
 } = require("../commands/timeMod");
 const { handleHelp } = require("../commands/help");
-// ATUALIZADO COM handleUnlockdownAll
 const {
   handleLockdown,
   handleUnlockdown,
   handleLockdownAll,
   handleUnlockdownAll,
 } = require("../commands/lockdown");
+const { handleBotInfo } = require("../commands/botinfo"); // <--- NOVO: Informações do Bot
 
 const PREFIX = "k!";
 
-// Emojis
+// Emojis para o comando Roles
 const EMOJIS = {
   FREEFIRE_ID: "1437889904406433974",
   VALORANT_ID: "1437889927613517975",
@@ -50,26 +50,39 @@ const createFeedbackEmbed = (title, description, color = 0xff0000) => {
     .setTimestamp();
 };
 
+// --- INÍCIO DO MÓDULO ---
 module.exports = async (message) => {
   if (message.author.bot) return;
 
-  // 1. SEGURANÇA
+  // ====================================================
+  // 1. CAMADA DE SEGURANÇA (Prioridade Máxima)
+  // ====================================================
+
+  // A. Proteção de Chat (Anti-Everyone, Anti-Link)
   if (await handleChatProtection(message)) return;
+
+  // B. Anti-Spam
   if (await handleAntiSpam(message)) return;
 
-  // 2. JOGO E MENÇÃO
+  // ====================================================
+  // 2. LÓGICA DE JOGO E MENÇÃO
+  // ====================================================
+
+  // Obtém o estado do jogo
   const state = getGameState(message.guild.id);
-  const userId = message.author.id;
+  const userId = message.author.id; // A. Resposta a Menção
 
   if (await handleMention(message)) return;
 
-  // Resposta Rápida Stop
+  // B. Resposta Rápida (STOP GAME)
   if (!message.content.startsWith(PREFIX)) {
     if (state.isActive) {
       const currentLetter = state.currentLetter;
+
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
+
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -81,6 +94,7 @@ module.exports = async (message) => {
           const hasInvalidLetter = cleanedAnswers.some(
             (ans) => !ans.startsWith(currentLetter)
           );
+
           if (hasInvalidLetter) {
             return message.channel
               .send({
@@ -94,11 +108,13 @@ module.exports = async (message) => {
               })
               .then((m) => setTimeout(() => m.delete(), 5000));
           }
+
           state.players[userId] = {
             answers: cleanedAnswers,
             isStopped: true,
             score: 0,
           };
+
           await message.react("✅");
           if (message.deletable)
             try {
@@ -111,7 +127,7 @@ module.exports = async (message) => {
     return;
   }
 
-  // 3. EXCLUSÃO CENTRALIZADA
+  // 3. EXCLUSÃO CENTRALIZADA DE COMANDOS
   if (message.deletable) {
     try {
       await message.delete();
@@ -122,10 +138,16 @@ module.exports = async (message) => {
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  // 4. ROTEAMENTO
+  // ====================================================
+  // 3. ROTEAMENTO DE COMANDOS
+  // ====================================================
 
+  // --- INFORMAÇÕES E AJUDA ---
   if (["help", "ajuda", "comandos"].includes(command))
     return handleHelp(message);
+  if (["sistemas", "botinfo"].includes(command)) return handleBotInfo(message); // <--- NOVO
+
+  // --- SISTEMA VIP ---
   if (
     [
       "vip",
@@ -138,29 +160,38 @@ module.exports = async (message) => {
     ].includes(command)
   )
     return handleVipCommands(message, command, args);
+
+  // --- SISTEMA DE PROTEÇÃO ---
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
 
+  // --- MODERAÇÃO BÁSICA ---
   if (command === "ban") return handleBan(message, args);
   if (command === "unban") return handleUnban(message, args);
   if (command === "kick") return handleKick(message, args);
   if (command === "nuke") return handleNuke(message);
 
+  // --- MODERAÇÃO TEMPORAL ---
   if (command === "mute") return handleMute(message, args);
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
   if (command === "soltar") return handleUnjail(message, args);
 
-  // Lockdown Routing Atualizado
+  // --- LOCKDOWN ---
   if (command === "lock") return handleLockdown(message);
   if (command === "lockall") return handleLockdownAll(message);
   if (command === "unlock") return handleUnlockdown(message);
-  if (command === "unlockall") return handleUnlockdownAll(message); // <--- AGORA VAI FUNCIONAR
+  if (command === "unlockall") return handleUnlockdownAll(message);
 
+  // --- PD MANAGER ---
   if (["pd", "setpd", "removepd"].includes(command))
     return handlePDCommand(message, command, args);
+
+  // --- AVATAR ---
   if (command === "av") return handleAvatar(message, args);
-  if (command === "repeat") return handleRepeat(message, args);
+
+  // --- REPEAT ---
+  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS (ROLES) ---
 
   if (command === "roles" || command === "cargos") {
     if (!message.member.permissions.has("MANAGE_GUILD")) {
@@ -210,7 +241,7 @@ module.exports = async (message) => {
         embeds: [createFeedbackEmbed("❌ Erro", "Falha ao postar painel.")],
       });
     }
-  }
+  } // --- JOGO STOP ---
 
   if (command === "stop") {
     if (state.isActive)

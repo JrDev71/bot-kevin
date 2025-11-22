@@ -1,19 +1,18 @@
 // events/messageCreate.js
 const { EmbedBuilder } = require("discord.js");
 
-// --- IMPORTAÇÕES DOS SISTEMAS DE JOGO E ESTADO ---
+// --- IMPORTAÇÕES DOS SISTEMAS ---
 const { getGameState } = require("../game/gameState");
 const { calculateScores, postReviewEmbed } = require("../game/scoreSystem");
 const { startRound } = require("../game/gameManager");
 const { handlePDCommand } = require("../pdManager");
 
-// --- IMPORTAÇÕES DE HANDLERS (SEGURANÇA) ---
+// --- IMPORTAÇÕES DE HANDLERS ---
 const handleMention = require("../handlers/mentionHandler");
 const handleAntiSpam = require("../handlers/antiSpamHandler");
 const handleChatProtection = require("../handlers/chatProtectionHandler");
-// REMOVIDO: handleBadWords
 
-// --- IMPORTAÇÕES DOS COMANDOS (Módulos externos) ---
+// --- IMPORTAÇÕES DOS COMANDOS ---
 const { handleAvatar } = require("../commands/avatar");
 const { handleRepeat } = require("../commands/repeat");
 const { handleVipCommands } = require("../commands/vip");
@@ -27,15 +26,17 @@ const {
   handleUnjail,
 } = require("../commands/timeMod");
 const { handleHelp } = require("../commands/help");
+// ATUALIZADO COM handleUnlockdownAll
 const {
   handleLockdown,
   handleUnlockdown,
   handleLockdownAll,
+  handleUnlockdownAll,
 } = require("../commands/lockdown");
 
 const PREFIX = "k!";
 
-// Emojis para o comando Roles
+// Emojis
 const EMOJIS = {
   FREEFIRE_ID: "1437889904406433974",
   VALORANT_ID: "1437889927613517975",
@@ -49,41 +50,26 @@ const createFeedbackEmbed = (title, description, color = 0xff0000) => {
     .setTimestamp();
 };
 
-// --- INÍCIO DO MÓDULO ---
 module.exports = async (message) => {
   if (message.author.bot) return;
 
-  // ====================================================
-  // 1. CAMADA DE SEGURANÇA (Prioridade Máxima)
-  // ====================================================
-
-  // A. Proteção de Chat (Anti-Everyone, Anti-Link)
+  // 1. SEGURANÇA
   if (await handleChatProtection(message)) return;
-
-  // B. Anti-Spam
   if (await handleAntiSpam(message)) return;
 
-  // (Filtro de Palavras removido conforme solicitado)
-
-  // ====================================================
-  // 2. LÓGICA DE JOGO E MENÇÃO
-  // ====================================================
-
-  // Obtém o estado do jogo
+  // 2. JOGO E MENÇÃO
   const state = getGameState(message.guild.id);
-  const userId = message.author.id; // A. Resposta a Menção
+  const userId = message.author.id;
 
   if (await handleMention(message)) return;
 
-  // B. Resposta Rápida (STOP GAME)
+  // Resposta Rápida Stop
   if (!message.content.startsWith(PREFIX)) {
     if (state.isActive) {
       const currentLetter = state.currentLetter;
-
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
-
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -95,7 +81,6 @@ module.exports = async (message) => {
           const hasInvalidLetter = cleanedAnswers.some(
             (ans) => !ans.startsWith(currentLetter)
           );
-
           if (hasInvalidLetter) {
             return message.channel
               .send({
@@ -109,13 +94,11 @@ module.exports = async (message) => {
               })
               .then((m) => setTimeout(() => m.delete(), 5000));
           }
-
           state.players[userId] = {
             answers: cleanedAnswers,
             isStopped: true,
             score: 0,
           };
-
           await message.react("✅");
           if (message.deletable)
             try {
@@ -128,7 +111,7 @@ module.exports = async (message) => {
     return;
   }
 
-  // 3. EXCLUSÃO CENTRALIZADA DE COMANDOS
+  // 3. EXCLUSÃO CENTRALIZADA
   if (message.deletable) {
     try {
       await message.delete();
@@ -139,9 +122,7 @@ module.exports = async (message) => {
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  // ====================================================
-  // 3. ROTEAMENTO DE COMANDOS
-  // ====================================================
+  // 4. ROTEAMENTO
 
   if (["help", "ajuda", "comandos"].includes(command))
     return handleHelp(message);
@@ -160,29 +141,26 @@ module.exports = async (message) => {
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
 
-  // Moderação Básica
   if (command === "ban") return handleBan(message, args);
   if (command === "unban") return handleUnban(message, args);
   if (command === "kick") return handleKick(message, args);
   if (command === "nuke") return handleNuke(message);
 
-  // Moderação Temporal
   if (command === "mute") return handleMute(message, args);
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
   if (command === "soltar") return handleUnjail(message, args);
 
-  // Lockdown (Incluindo lockall)
+  // Lockdown Routing Atualizado
   if (command === "lock") return handleLockdown(message);
   if (command === "lockall") return handleLockdownAll(message);
   if (command === "unlock") return handleUnlockdown(message);
-  if (command === "unlockall") return handleUnlockdownAll(message);
+  if (command === "unlockall") return handleUnlockdownAll(message); // <--- AGORA VAI FUNCIONAR
 
-  // Sistemas Diversos
   if (["pd", "setpd", "removepd"].includes(command))
     return handlePDCommand(message, command, args);
   if (command === "av") return handleAvatar(message, args);
-  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS ---
+  if (command === "repeat") return handleRepeat(message, args);
 
   if (command === "roles" || command === "cargos") {
     if (!message.member.permissions.has("MANAGE_GUILD")) {
@@ -232,7 +210,7 @@ module.exports = async (message) => {
         embeds: [createFeedbackEmbed("❌ Erro", "Falha ao postar painel.")],
       });
     }
-  } // --- JOGO STOP ---
+  }
 
   if (command === "stop") {
     if (state.isActive)
@@ -258,7 +236,7 @@ module.exports = async (message) => {
       `✅ **STOP!** Rodada encerrada. Iniciando revisão...`
     );
     await postReviewEmbed(state, message.channel);
-  } // --- RESPOSTA STOP OBSOLETA ---
+  }
 
   if (command === "resposta" || command === "respostas") {
     return message.channel

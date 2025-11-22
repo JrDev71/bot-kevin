@@ -3,7 +3,7 @@ const { EmbedBuilder, PermissionsBitField } = require("discord.js");
 
 // --- CONFIGURAÇÃO DA WHITELIST (Imunidade Total) ---
 // Coloque aqui SEU ID e de quem realmente manda (Donos/Devs)
-const WHITELIST_IDS = ["578307859964624928", "697947696702554223"];
+const WHITELIST_IDS = ["", "697947696702554223"];
 
 module.exports = async (message) => {
   // 1. Verifica Whitelist Suprema (Apenas estes podem tudo)

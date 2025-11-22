@@ -2,10 +2,11 @@
 const fs = require("fs");
 const path = require("path");
 const { EmbedBuilder } = require("discord.js");
-const logEmbed = require("./utils/logEmbed");
+const logEmbed = require("./utils/logEmbed"); // Importa o sistema de logs
 
 // Caminho para o arquivo de banco de dados JSON
 const PD_FILE = path.resolve(__dirname, "pdData.json");
+// MAX_PDS_PER_STAFF mantido para lógica interna, mas pode ser ignorado se desejar ilimitado
 const MAX_PDS_PER_STAFF = 2;
 const PREFIX = "k!";
 
@@ -137,7 +138,6 @@ async function handlePDCommand(message, command, args) {
       .setTitle(`👑 Primeiras Damas Atuais do Servidor`)
       .setColor(0xffa500);
 
-    // Loop para adicionar os campos
     for (const [index, pd] of pdData.pds.entries()) {
       const pdMember = await message.guild.members
         .fetch(pd.memberId)
@@ -170,8 +170,8 @@ async function handlePDCommand(message, command, args) {
       }
     }
 
-    // CORREÇÃO: Envio da mensagem FORA do loop
     await message.channel.send({ embeds: [pdEmbed] });
+    // REMOVIDO: message.delete(). O messageCreate.js já faz isso.
     return;
   }
 
@@ -256,6 +256,7 @@ async function handlePDCommand(message, command, args) {
 
       await message.channel.send({ embeds: [successEmbed] });
 
+      // --- LOG ---
       await logEmbed(
         client,
         logChannelId,
@@ -388,6 +389,7 @@ async function handlePDCommand(message, command, args) {
 
       await message.channel.send({ embeds: [removalEmbed] });
 
+      // --- LOG ---
       await logEmbed(
         client,
         logChannelId,

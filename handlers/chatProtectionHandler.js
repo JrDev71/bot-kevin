@@ -3,7 +3,7 @@ const { EmbedBuilder, PermissionsBitField } = require("discord.js");
 
 // --- CONFIGURAÇÃO DA WHITELIST (Imunidade Total) ---
 // Coloque aqui SEU ID e de quem realmente manda (Donos/Devs)
-const WHITELIST_IDS = ["", "697947696702554223"];
+const WHITELIST_IDS = ["578307859964624928", "697947696702554223"];
 
 module.exports = async (message) => {
   // 1. Verifica Whitelist Suprema (Apenas estes podem tudo)
@@ -27,7 +27,7 @@ module.exports = async (message) => {
     contentLower.includes("@here")
   ) {
     violationType = "MASS_MENTION";
-    warningMessage = `🐮 **${message.author}, não marca seu boi!** Menções globais são restritas.`;
+    warningMessage = `🐂 **${message.author}, não marca seu boi!** Menções globais foram restritas pelos bigode do serv`;
   }
 
   // --- 3. ANTI-INVITE ---
@@ -37,7 +37,7 @@ module.exports = async (message) => {
     // Opcional: Se quiser deixar Admins mandarem link, descomente o if abaixo envolvendo o bloco
     // if (!member.permissions.has(PermissionsBitField.Flags.Administrator)) {
     violationType = "INVITE_LINK";
-    warningMessage = `🚫 **${message.author}, é proibido enviar convites de outros servidores aqui!**`;
+    warningMessage = `🚫 **${message.author}, Tá fazendo div? Está com nós ou tá com os cara?**`;
     // }
   }
 

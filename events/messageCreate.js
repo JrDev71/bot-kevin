@@ -176,6 +176,7 @@ module.exports = async (message) => {
   if (command === "lock") return handleLockdown(message);
   if (command === "lockall") return handleLockdownAll(message);
   if (command === "unlock") return handleUnlockdown(message);
+  if (command === "unlockall") return handleUnlockdownAll(message);
 
   // Sistemas Diversos
   if (["pd", "setpd", "removepd"].includes(command))

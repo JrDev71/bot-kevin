@@ -139,7 +139,9 @@ module.exports = async (interaction) => {
           (f) => f.name === "Status"
         ).value = `❌ REJEITADO por ${interaction.user.tag}`;
       member
-        .send(`Sua verificação em **${interaction.guild.name}** foi rejeitada.`)
+        .send(
+          `Sua verificação em **${interaction.guild.name}** foi rejeitada, sai fora paneleiro.`
+        )
         .catch(() => {});
     }
     await interaction.editReply({ embeds: [embed], components: [] });

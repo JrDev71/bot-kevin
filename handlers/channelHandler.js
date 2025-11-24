@@ -6,6 +6,8 @@ const {
   ActionRowBuilder,
   ChannelType,
   PermissionsBitField,
+  ChannelSelectMenuBuilder,
+  ComponentType,
 } = require("discord.js");
 const {
   BTN_CH_CREATE,
@@ -14,16 +16,17 @@ const {
 } = require("../commands/channelPanel");
 const logEmbed = require("../utils/logEmbed");
 
-// IDs dos Modais
-const MODAL_CREATE = "mdl_ch_create";
-const MODAL_DELETE = "mdl_ch_delete";
-const MODAL_EDIT = "mdl_ch_edit";
+const MDL_CREATE = "mdl_ch_create";
+const MDL_NAME_EDIT = "mdl_ch_rename"; // Modal para digitar novo nome
+const SEL_DEL = "sel_ch_del";
+const SEL_EDIT = "sel_ch_edit";
 
 module.exports = async (interaction) => {
   const isButton = interaction.isButton();
   const isModal = interaction.isModalSubmit();
+  const isSelect = interaction.isChannelSelectMenu();
 
-  // Verificação de Segurança (Staff)
+  // Verifica Permissão
   const trustedRoles = process.env.STAFF_TRUSTED_ROLES?.split(",") || [];
   const isStaff =
     interaction.member.permissions.has(
@@ -31,13 +34,12 @@ module.exports = async (interaction) => {
     ) ||
     interaction.member.roles.cache.some((r) => trustedRoles.includes(r.id));
 
-  // Se não for Staff e tentar interagir com esses botões
-  if (!isStaff && (isButton || isModal)) {
+  if (!isStaff && (isButton || isModal || isSelect)) {
+    // Filtro rápido para garantir que é interação deste handler
     if (
-      [BTN_CH_CREATE, BTN_CH_DELETE, BTN_CH_EDIT].includes(
+      [BTN_CH_CREATE, BTN_CH_DELETE, BTN_CH_EDIT, SEL_DEL, SEL_EDIT].includes(
         interaction.customId
-      ) ||
-      [MODAL_CREATE, MODAL_DELETE, MODAL_EDIT].includes(interaction.customId)
+      )
     ) {
       return interaction.reply({
         content: "🔒 Acesso negado.",
@@ -48,9 +50,10 @@ module.exports = async (interaction) => {
 
   // --- BOTÕES ---
   if (isButton) {
+    // 1. CRIAR (Precisa de Modal para nome)
     if (interaction.customId === BTN_CH_CREATE) {
       const modal = new ModalBuilder()
-        .setCustomId(MODAL_CREATE)
+        .setCustomId(MDL_CREATE)
         .setTitle("Criar Novo Canal");
       modal.addComponents(
         new ActionRowBuilder().addComponents(
@@ -71,25 +74,82 @@ module.exports = async (interaction) => {
       );
       return interaction.showModal(modal);
     }
+    // 2. DELETAR (Menu de Seleção)
     if (interaction.customId === BTN_CH_DELETE) {
-      const modal = new ModalBuilder()
-        .setCustomId(MODAL_DELETE)
-        .setTitle("Deletar Canal");
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId("c_id")
-            .setLabel("ID do Canal")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-        )
+      const row = new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(SEL_DEL)
+          .setPlaceholder("Selecione o canal para DELETAR")
       );
-      return interaction.showModal(modal);
+      return interaction.reply({
+        content: "Selecione o canal para apagar:",
+        components: [row],
+        ephemeral: true,
+      });
     }
+    // 3. EDITAR (Menu de Seleção)
     if (interaction.customId === BTN_CH_EDIT) {
+      const row = new ActionRowBuilder().addComponents(
+        new ChannelSelectMenuBuilder()
+          .setCustomId(SEL_EDIT)
+          .setPlaceholder("Selecione o canal para EDITAR")
+      );
+      return interaction.reply({
+        content: "Qual canal você quer renomear?",
+        components: [row],
+        ephemeral: true,
+      });
+    }
+  }
+
+  // --- SELETORES ---
+  if (isSelect) {
+    if (interaction.customId === SEL_DEL) {
+      await interaction.deferUpdate();
+      const channelId = interaction.values[0];
+      const channel = interaction.guild.channels.cache.get(channelId);
+
+      if (!channel)
+        return interaction.editReply({
+          content: "Canal não encontrado.",
+          components: [],
+        });
+
+      try {
+        const name = channel.name;
+        await channel.delete();
+
+        const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
+        await logEmbed(
+          interaction.client,
+          logChannelId,
+          "Canal Deletado (Painel)",
+          `**#${name}** deletado por <@${interaction.user.id}>`,
+          0xff0000
+        );
+
+        return interaction.editReply({
+          content: `🗑️ Canal **${name}** deletado com sucesso.`,
+          components: [],
+        });
+      } catch (e) {
+        return interaction.editReply({
+          content: `Erro ao deletar: ${e.message}`,
+          components: [],
+        });
+      }
+    }
+
+    if (interaction.customId === SEL_EDIT) {
+      const channelId = interaction.values[0];
+      const channel = interaction.guild.channels.cache.get(channelId);
+      if (!channel)
+        return interaction.reply({ content: "Canal sumiu.", ephemeral: true });
+
+      // Abre modal para digitar o novo nome. Passa ID no customId do modal.
       const modal = new ModalBuilder()
-        .setCustomId(MODAL_EDIT)
-        .setTitle("Editar Este Canal");
+        .setCustomId(`${MDL_NAME_EDIT}_${channelId}`)
+        .setTitle(`Editar: ${channel.name.slice(0, 20)}`);
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
@@ -97,6 +157,7 @@ module.exports = async (interaction) => {
             .setLabel("Novo Nome")
             .setStyle(TextInputStyle.Short)
             .setRequired(true)
+            .setValue(channel.name)
         )
       );
       return interaction.showModal(modal);
@@ -105,9 +166,10 @@ module.exports = async (interaction) => {
 
   // --- MODAIS ---
   if (isModal) {
-    // 1. CRIAR
-    if (interaction.customId === MODAL_CREATE) {
-      await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
+
+    if (interaction.customId === MDL_CREATE) {
       const name = interaction.fields.getTextInputValue("c_name");
       const typeInput = interaction.fields
         .getTextInputValue("c_type")
@@ -115,78 +177,42 @@ module.exports = async (interaction) => {
       const type = typeInput.includes("voz")
         ? ChannelType.GuildVoice
         : ChannelType.GuildText;
-
       try {
-        const ch = await interaction.guild.channels.create({
-          name: name,
-          type: type,
-        });
-        interaction.editReply(`✅ Canal ${ch} criado com sucesso.`);
-
-        // Log
-        const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
+        const ch = await interaction.guild.channels.create({ name, type });
+        interaction.editReply(`✅ Canal ${ch} criado.`);
         await logEmbed(
           interaction.client,
           logChannelId,
           "Canal Criado (Painel)",
-          `Criado por <@${interaction.user.id}>: ${ch.name}`,
+          `**${ch.name}** por <@${interaction.user.id}>`,
           0x00ff00
         );
       } catch (e) {
         interaction.editReply(`Erro: ${e.message}`);
       }
-      return true;
     }
 
-    // 2. DELETAR
-    if (interaction.customId === MODAL_DELETE) {
-      await interaction.deferReply({ ephemeral: true });
-      const id = interaction.fields.getTextInputValue("c_id");
-      const ch = interaction.guild.channels.cache.get(id);
-
-      if (!ch) return interaction.editReply("❌ Canal não encontrado.");
-
-      try {
-        const name = ch.name;
-        await ch.delete();
-        interaction.editReply(`🗑️ Canal **${name}** deletado.`);
-
-        const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
-        await logEmbed(
-          interaction.client,
-          logChannelId,
-          "Canal Deletado (Painel)",
-          `Deletado por <@${interaction.user.id}>: ${name} (${id})`,
-          0xff0000
-        );
-      } catch (e) {
-        interaction.editReply(`Erro: ${e.message}`);
-      }
-      return true;
-    }
-
-    // 3. EDITAR
-    if (interaction.customId === MODAL_EDIT) {
-      await interaction.deferReply({ ephemeral: true });
+    if (interaction.customId.startsWith(MDL_NAME_EDIT)) {
+      const channelId = interaction.customId.split("_").pop();
       const newName = interaction.fields.getTextInputValue("c_newname");
-      try {
-        const oldName = interaction.channel.name;
-        await interaction.channel.setName(newName);
-        interaction.editReply(`✏️ Canal renomeado para **${newName}**.`);
+      const channel = interaction.guild.channels.cache.get(channelId);
 
-        const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
+      if (!channel) return interaction.editReply("Canal não existe mais.");
+      try {
+        await channel.setName(newName);
+        interaction.editReply(`✏️ Canal renomeado para **${newName}**.`);
         await logEmbed(
           interaction.client,
           logChannelId,
           "Canal Editado (Painel)",
-          `Editado por <@${interaction.user.id}>: ${oldName} -> ${newName}`,
+          `Editado por <@${interaction.user.id}>`,
           0xf1c40f
         );
       } catch (e) {
         interaction.editReply(`Erro: ${e.message}`);
       }
-      return true;
     }
+    return true;
   }
 
   return false;

@@ -14,7 +14,7 @@ const VERIFY_BUTTON_ID = "start_verification";
 const APPROVE_BUTTON_ID = "approve_user";
 const REJECT_BUTTON_ID = "reject_user";
 
-// --- CONFIGURAÇÃO VISUAL ---
+// CONFIG VISUAL
 const HEADER_IMAGE =
   "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
 const COLOR_NEUTRAL = 0x2f3136;
@@ -62,7 +62,7 @@ module.exports = async (interaction) => {
     const approvalEmbed = new EmbedBuilder()
       .setTitle(`Solicitação de Acesso`)
       .setThumbnail(interaction.user.displayAvatarURL())
-      .setImage(HEADER_IMAGE) // IMAGEM PADRÃO
+      .setImage(HEADER_IMAGE)
       .addFields(
         {
           name: "Usuário",
@@ -72,11 +72,10 @@ module.exports = async (interaction) => {
         { name: "Referência", value: `\`${referredUsername}\``, inline: true },
         { name: "Status", value: "🟡 Aguardando Análise" }
       )
-      .setColor(COLOR_NEUTRAL) // COR NEUTRA
+      .setColor(COLOR_NEUTRAL)
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
-      // BOTÕES CINZA (SECONDARY) - Mais limpo e profissional
       new ButtonBuilder()
         .setCustomId(APPROVE_BUTTON_ID)
         .setLabel("Aprovar Acesso")
@@ -89,7 +88,6 @@ module.exports = async (interaction) => {
         .setEmoji("⛔")
     );
 
-    // Menciona a Staff de forma discreta
     const mention = config.APPROVER_ROLE_ID
       ? `<@&${config.APPROVER_ROLE_ID}>`
       : "";
@@ -111,34 +109,39 @@ module.exports = async (interaction) => {
     isButton &&
     [APPROVE_BUTTON_ID, REJECT_BUTTON_ID].includes(interaction.customId)
   ) {
-    // Checagem de Permissão (Mantida)
-    const hasPrimary =
-      config.APPROVER_ROLE_ID &&
-      interaction.member.roles.cache.has(config.APPROVER_ROLE_ID);
-    const hasSecondary =
-      config.SECONDARY_APPROVER_ROLE_ID &&
-      interaction.member.roles.cache.has(config.SECONDARY_APPROVER_ROLE_ID);
-    const isAdmin = interaction.member.permissions.has(
-      PermissionsBitField.Flags.Administrator
-    );
-
-    if (!hasPrimary && !hasSecondary && !isAdmin) {
+    // Checagem de Permissão
+    const hasPerm =
+      (config.APPROVER_ROLE_ID &&
+        interaction.member.roles.cache.has(config.APPROVER_ROLE_ID)) ||
+      interaction.member.permissions.has(
+        PermissionsBitField.Flags.Administrator
+      );
+    if (!hasPerm)
       return interaction.reply({
-        content: "🔒 Apenas a equipe de verificação pode interagir.",
+        content: "🔒 Sem permissão.",
         ephemeral: true,
       });
-    }
 
     await interaction.deferUpdate();
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0]);
-    // Garante visual padrão na edição
     embed.setImage(HEADER_IMAGE).setColor(COLOR_NEUTRAL);
 
-    // Regex para pegar ID do campo "Usuário" ou "Membro"
+    // --- CORREÇÃO DA REGEX AQUI ---
+    // Procura por qualquer sequência de 17 a 20 números no campo 'Usuário' ou 'Membro'
+    // Isso funciona com ou sem crases, com ou sem parenteses.
     const targetId = embed.data.fields
       .find((f) => f.name === "Usuário" || f.name === "Membro")
-      .value.match(/\((\d+)\)/)?.[1];
+      ?.value.match(/\d{17,20}/)?.[0];
+
+    if (!targetId) {
+      return interaction.followUp({
+        content:
+          "❌ Erro: Não foi possível encontrar o ID do usuário na ficha.",
+        ephemeral: true,
+      });
+    }
+
     const member = await interaction.guild.members
       .fetch(targetId)
       .catch(() => null);
@@ -151,24 +154,29 @@ module.exports = async (interaction) => {
 
     if (interaction.customId === APPROVE_BUTTON_ID) {
       try {
-        await member.roles.add(config.VERIFIED_ROLE_ID);
-        embed.data.fields.find(
-          (f) => f.name === "Status"
-        ).value = `✅ Aprovado por ${interaction.user.username}`;
+        // Verificação extra para garantir que 'member.roles' existe
+        if (member.roles) {
+          await member.roles.add(config.VERIFIED_ROLE_ID);
+          embed.data.fields.find(
+            (f) => f.name === "Status"
+          ).value = `✅ Aprovado por ${interaction.user.username}`;
 
-        // Log de Aprovação
-        const logChannel = interaction.guild.channels.cache.get(
-          config.APPROVED_LOG_CHANNEL_ID
-        );
-        if (logChannel)
-          logChannel.send({
-            content: `✅ Acesso liberado: ${member}`,
-            embeds: [embed],
-          });
+          const logChannel = interaction.guild.channels.cache.get(
+            config.APPROVED_LOG_CHANNEL_ID
+          );
+          if (logChannel)
+            logChannel.send({
+              content: `✅ Acesso liberado: ${member}`,
+              embeds: [embed],
+            });
+        } else {
+          throw new Error("Objeto member.roles indefinido.");
+        }
       } catch (error) {
         console.error("Erro ao dar cargo:", error);
+        // Não retorna erro para não travar a edição da mensagem, apenas loga
         await interaction.followUp({
-          content: "❌ Erro de permissão ao dar o cargo.",
+          content: `❌ Erro ao dar cargo: Verifique a hierarquia do bot.`,
           ephemeral: true,
         });
         return;

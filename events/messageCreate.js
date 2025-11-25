@@ -1,18 +1,22 @@
 // events/messageCreate.js
-const { EmbedBuilder } = require("discord.js");
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
-// --- IMPORTAÇÕES DOS SISTEMAS ---
+// --- SISTEMAS PRINCIPAIS ---
 const { getGameState } = require("../game/gameState");
 const { startRound } = require("../game/gameManager");
 const { postReviewEmbed } = require("../game/scoreSystem");
-const { handlePDCommand } = require("../pdManager");
 
 // --- HANDLERS DE SEGURANÇA ---
 const handleMention = require("../handlers/mentionHandler");
 const handleAntiSpam = require("../handlers/antiSpamHandler");
 const handleChatProtection = require("../handlers/chatProtectionHandler");
 
-// --- COMANDOS GERAIS ---
+// --- COMANDOS (MODULARIZADOS) ---
 const { handleAvatar } = require("../commands/avatar");
 const { handleRepeat } = require("../commands/repeat");
 const { handleVipCommands } = require("../commands/vip");
@@ -34,19 +38,20 @@ const {
 } = require("../commands/lockdown");
 const { handleBotInfo } = require("../commands/botinfo");
 
-// --- PAINÉIS (Aqui estava o erro antes) ---
-const { sendRolePanel } = require("../commands/rolePanel");
-const { handleChannelPanel } = require("../commands/channelPanel");
-const { handleModPanel } = require("../commands/modPanel");
+// --- NOVOS PAINÉIS VISUAIS (Estilo Profissional) ---
+const { sendRolePanel } = require("../commands/rolePanel"); // k!cargo
+const { handleChannelPanel } = require("../commands/channelPanel"); // k!canal
+const { handleModPanel } = require("../commands/modPanel"); // k!mod
+const { handlePDCommand } = require("../pdManager"); // k!pd
 
 const PREFIX = "k!";
 
-// Helper visual
-const createFeedbackEmbed = (title, description, color = 0xff0000) => {
+// Helper Visual
+const createFeedbackEmbed = (title, description) => {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .setColor(color)
+    .setColor(0x2f3136) // Cinza Profissional
     .setTimestamp();
 };
 
@@ -124,10 +129,8 @@ module.exports = async (message) => {
   // ROTEAMENTO DE COMANDOS
   // ==========================
 
-  // --- PAINÉIS GERAIS (Prioridade) ---
-  // Chama os arquivos que você criou. Não tenta rodar lógica aqui dentro.
-  if (["cargo", "cargos", "roles"].includes(command))
-    return sendRolePanel(message);
+  // --- PAINÉIS GERAIS (AQUI ESTAVAM FALTANDO) ---
+  if (["cargo", "cargos"].includes(command)) return sendRolePanel(message);
   if (["canal", "canais", "infra"].includes(command))
     return handleChannelPanel(message);
   if (["mod", "punir", "justice"].includes(command))
@@ -173,7 +176,53 @@ module.exports = async (message) => {
 
   // --- UTIL ---
   if (command === "av") return handleAvatar(message, args);
-  if (command === "repeat") return handleRepeat(message, args); // --- JOGO STOP ---
+  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS (ROLES - LEGADO/PÚBLICO) ---
+
+  if (command === "roles") {
+    if (!message.member.permissions.has("MANAGE_GUILD")) {
+      return message.channel.send({
+        embeds: [
+          createFeedbackEmbed(
+            "🔒 Sem Permissão",
+            `Requer **Gerenciar Servidor**.`
+          ),
+        ],
+      });
+    }
+
+    const rolePanelEmbed = new EmbedBuilder()
+      .setTitle("Selecione suas Roles")
+      .setDescription(
+        "Clique nos botões abaixo para adicionar ou remover as roles de jogo."
+      )
+      .setColor(0x2f3136)
+      .setImage(
+        "https://i.pinimg.com/736x/3b/69/7c/3b697c884965fa5d817d34745aa71b29.jpg"
+      );
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("btn_role_freefire")
+        .setLabel("Free Fire")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("btn_role_valorant")
+        .setLabel("Valorant")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    try {
+      await message.channel.send({
+        embeds: [rolePanelEmbed],
+        components: [row],
+      });
+    } catch (error) {
+      console.error("Erro Roles:", error);
+      return message.channel.send({
+        embeds: [createFeedbackEmbed("❌ Erro", "Falha ao postar painel.")],
+      });
+    }
+  } // --- JOGO STOP ---
 
   if (command === "stop") {
     if (state.isActive)
@@ -201,7 +250,7 @@ module.exports = async (message) => {
       ],
     });
     await postReviewEmbed(state, message.channel);
-  } // --- RESPOSTA OBSOLETA ---
+  }
 
   if (command === "resposta" || command === "respostas") {
     return message.channel

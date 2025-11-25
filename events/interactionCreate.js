@@ -1,47 +1,48 @@
 // events/interactionCreate.js
 
-// --- IMPORTAÇÃO DOS HANDLERS (Módulos de Interação) ---
-const handleSlashCommand = require("../handlers/slashHandler"); // Slash Commands (/ping)
-const handleVerification = require("../handlers/verificationHandler"); // Botão Verificar/Aprovar
-const handleStopGame = require("../handlers/stopGameHandler"); // Jogo Stop
-const handleVip = require("../handlers/vipHandler"); // Painel VIP
-const handleChannelManagement = require("../handlers/channelHandler"); // Painel de Canais
-const handleModInteractions = require("../handlers/modHandler"); // Painel de Moderação (NOVO)
+// --- IMPORTAÇÃO DOS HANDLERS (Os Operários) ---
+const handleSlashCommand = require("../handlers/slashHandler");
+const handleVerification = require("../handlers/verificationHandler");
+const handleStopGame = require("../handlers/stopGameHandler");
+const handleVip = require("../handlers/vipHandler");
+const handleChannelManagement = require("../handlers/channelHandler");
+const handleModInteractions = require("../handlers/modHandler");
 
-// O Handler de Cargos está dentro do arquivo de comando (Exceção)
-const { handleRoleInteractions } = require("../commands/rolePanel"); // Painel de Cargos
+// O Handler de Cargos está no arquivo de comando
+const { handleRoleInteractions } = require("../commands/rolePanel");
 
 module.exports = async (interaction) => {
   try {
-    // 1. Tenta tratar Slash Commands
-    await handleSlashCommand(interaction);
-    if (interaction.replied || interaction.deferred) return;
+    // 1. Slash Commands (/ping)
+    // Se for comando de barra, o slashHandler resolve e paramos aqui.
+    if (interaction.isCommand()) {
+      await handleSlashCommand(interaction);
+      return;
+    }
 
-    // 2. Tenta tratar Verificação
+    // Para botões e modais, passamos para cada handler.
+    // Se o handler retornar 'true', significa que ele cuidou da interação, então paramos.
+
+    // 2. Sistema de Verificação (Entrada)
     if (await handleVerification(interaction)) return;
 
-    // 3. Tenta tratar Jogo Stop
+    // 3. Jogo Stop
     if (await handleStopGame(interaction)) return;
 
-    // 4. Tenta tratar Sistema VIP
+    // 4. Sistema VIP
     if (await handleVip(interaction)) return;
 
-    // 5. Painel de Infraestrutura/Canais
+    // 5. Painel de Infraestrutura (Canais)
     if (await handleChannelManagement(interaction)) return;
 
-    // 6. Painel de Moderação (NOVO)
+    // 6. Painel de Moderação
     if (await handleModInteractions(interaction)) return;
 
     // 7. Painel de Cargos
-    // (Este handler retorna false se não processar, então checamos o retorno)
-    try {
-      if ((await handleRoleInteractions(interaction)) !== false) return;
-    } catch (e) {
-      // Ignora erro se não for botão de cargo
-    }
+    if ((await handleRoleInteractions(interaction)) !== false) return;
   } catch (error) {
     console.error("Erro Fatal no interactionCreate:", error);
-    // Tenta responder apenas se ainda não houve resposta para não deixar o bot "pensando"
+    // Evita erro de "Interação falhou" no Discord se ninguém respondeu
     if (!interaction.replied && !interaction.deferred) {
       await interaction
         .reply({

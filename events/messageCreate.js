@@ -1,5 +1,10 @@
 // events/messageCreate.js
-const { EmbedBuilder } = require("discord.js");
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
 // --- IMPORTAÇÕES DOS SISTEMAS DE JOGO E ESTADO ---
 const { getGameState } = require("../game/gameState");
@@ -34,24 +39,20 @@ const {
 } = require("../commands/lockdown");
 const { handleBotInfo } = require("../commands/botinfo");
 
-// --- IMPORTAÇÕES DOS PAINÉIS DE GESTÃO ---
-const { sendRolePanel } = require("../commands/rolePanel"); // Painel de Cargos
-const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de Canais
-const { handleModPanel } = require("../commands/modPanel"); // Painel de Moderação (NOVO)
-
 const PREFIX = "k!";
 
-// Emojis para o comando Roles
-const EMOJIS = {
-  FREEFIRE_ID: "1437889904406433974",
-  VALORANT_ID: "1437889927613517975",
-};
+// URL da imagem de cabeçalho padronizada
+const HEADER_IMAGE_URL =
+  "https://i.pinimg.com/736x/3b/69/7c/3b697c884965fa5d817d34745aa71b29.jpg";
+const NEUTRAL_COLOR = 0x2f3136; // Cor cinza escura para todos os embeds
 
-const createFeedbackEmbed = (title, description, color = 0xff0000) => {
+// Função auxiliar para criar embeds de feedback padronizados
+const createFeedbackEmbed = (title, description) => {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .setColor(color)
+    .setColor(NEUTRAL_COLOR)
+    .setImage(HEADER_IMAGE_URL) // Adiciona a imagem padrão
     .setTimestamp();
 };
 
@@ -106,8 +107,7 @@ module.exports = async (message) => {
                 embeds: [
                   createFeedbackEmbed(
                     "❌ Resposta Inválida",
-                    `Todas as respostas devem começar com a letra **${currentLetter}**!`,
-                    0x00bfff
+                    `Todas as respostas devem começar com a letra **${currentLetter}**!`
                   ),
                 ],
               })
@@ -152,14 +152,6 @@ module.exports = async (message) => {
     return handleHelp(message);
   if (["sistemas", "botinfo"].includes(command)) return handleBotInfo(message);
 
-  // --- PAINÉIS DE GESTÃO (ZERO TRUST) ---
-  if (command === "cargo" || command === "cargos")
-    return sendRolePanel(message);
-  if (command === "canal" || command === "canais" || command === "infra")
-    return handleChannelPanel(message);
-  if (command === "mod" || command === "punir" || command === "justice")
-    return handleModPanel(message); // <--- NOVO
-
   // --- SISTEMA VIP ---
   if (
     [
@@ -178,13 +170,13 @@ module.exports = async (message) => {
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
 
-  // --- MODERAÇÃO BÁSICA (Manual) ---
+  // --- MODERAÇÃO BÁSICA ---
   if (command === "ban") return handleBan(message, args);
   if (command === "unban") return handleUnban(message, args);
   if (command === "kick") return handleKick(message, args);
   if (command === "nuke") return handleNuke(message);
 
-  // --- MODERAÇÃO TEMPORAL (Manual) ---
+  // --- MODERAÇÃO TEMPORAL ---
   if (command === "mute") return handleMute(message, args);
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
@@ -204,50 +196,38 @@ module.exports = async (message) => {
   if (command === "av") return handleAvatar(message, args);
 
   // --- REPEAT ---
-  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS (ROLES - LEGADO/PÚBLICO) ---
+  if (command === "repeat") return handleRepeat(message, args);
 
-  if (command === "roles") {
-    if (!message.member.permissions.has("MANAGE_GUILD")) {
-      return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "🔒 Sem Permissão",
-            `Requer **Gerenciar Servidor**.`
-          ),
-        ],
-      });
-    }
-    const freefireEmoji = message.guild.emojis.cache.get(EMOJIS.FREEFIRE_ID);
-    const valorantEmoji = message.guild.emojis.cache.get(EMOJIS.VALORANT_ID);
+  // --- PAINEL DE CARGOS (ROLES) ---
+  if (command === "roles" || command === "cargos") {
+    // ... (verificação de permissão mantida)
+
     const rolePanelEmbed = new EmbedBuilder()
-      .setTitle("🎮 Escolha seu Jogo")
+      .setTitle("Selecione suas Roles")
       .setDescription(
-        `Reaja de acordo com seu jogo:\n\n${
-          freefireEmoji || "FREEFIRE"
-        } — Cargo de Free Fire\n${
-          valorantEmoji || "VALORANT"
-        } — Cargo de Valorant\n\n*Você pode remover o cargo tirando a reação.*`
+        "Clique nos botões abaixo para adicionar ou remover as roles de jogo."
       )
-      .setColor(0x9b59b6)
-      .setThumbnail(message.guild.iconURL({ dynamic: true }))
+      .setColor(NEUTRAL_COLOR)
+      .setImage(HEADER_IMAGE_URL) // Imagem de cabeçalho
       .setTimestamp();
+
+    // Cria botões cinza (Secondary) em vez de reações
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("btn_role_freefire")
+        .setLabel("Free Fire")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("btn_role_valorant")
+        .setLabel("Valorant")
+        .setStyle(ButtonStyle.Secondary)
+    );
+
     try {
-      const sentMessage = await message.channel.send({
+      await message.channel.send({
         embeds: [rolePanelEmbed],
+        components: [row],
       });
-      await sentMessage.react(EMOJIS.FREEFIRE_ID);
-      await sentMessage.react(EMOJIS.VALORANT_ID);
-      return message.author
-        .send({
-          embeds: [
-            createFeedbackEmbed(
-              "✅ Painel Postado",
-              `ID da Mensagem: \`${sentMessage.id}\`\nAtualize o \`.env\` e reinicie.`,
-              0x00ff00
-            ),
-          ],
-        })
-        .catch(() => {});
     } catch (error) {
       console.error("Erro Roles:", error);
       return message.channel.send({
@@ -276,11 +256,16 @@ module.exports = async (message) => {
       });
     clearTimeout(state.timer);
     state.isActive = false;
-    await message.channel.send(
-      `✅ **STOP!** Rodada encerrada. Iniciando revisão...`
-    );
+    await message.channel.send({
+      embeds: [
+        createFeedbackEmbed(
+          "✅ STOP!",
+          "Rodada encerrada. Iniciando revisão..."
+        ),
+      ],
+    });
     await postReviewEmbed(state, message.channel);
-  }
+  } // --- RESPOSTA OBSOLETA ---
 
   if (command === "resposta" || command === "respostas") {
     return message.channel

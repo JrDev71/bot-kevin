@@ -16,14 +16,20 @@ const BTN = {
   DELETE: "btn_ch_delete",
 };
 const MDL = { CREATE: "mdl_ch_create", RENAME: "mdl_ch_rename" };
-const SEL = { DEL: "sel_ch_del", EDIT: "sel_ch_edit", TYPE: "sel_ch_type" };
+// Adicionamos SEL.CAT para selecionar a categoria pai
+const SEL = {
+  DEL: "sel_ch_del",
+  EDIT: "sel_ch_edit",
+  TYPE: "sel_ch_type",
+  CAT: "sel_ch_cat",
+};
 
-// --- MODELOS DE PERMISSÃO (INCLUINDO CATEGORIAS) ---
+// --- MODELOS DE PERMISSÃO ---
 const CHANNEL_PRESETS = {
   // --- CATEGORIAS ---
   cat_public: {
     label: "📂 Categoria Pública",
-    description: "Organização: Todos veem o conteúdo dentro.",
+    description: "Todos veem os canais dentro.",
     type: ChannelType.GuildCategory,
     overwrites: (guild) => [
       {
@@ -34,7 +40,7 @@ const CHANNEL_PRESETS = {
   },
   cat_staff: {
     label: "🔐 Categoria Staff",
-    description: "Organização: Apenas Staff vê o conteúdo dentro.",
+    description: "Apenas Staff vê.",
     type: ChannelType.GuildCategory,
     overwrites: (guild) => [
       {
@@ -43,10 +49,10 @@ const CHANNEL_PRESETS = {
       },
     ],
   },
-  // --- CANAIS ---
+  // --- CANAIS DE TEXTO ---
   public_text: {
     label: "💬 Chat Público",
-    description: "Texto: Aberto para todos.",
+    description: "Texto: Todos leem e escrevem.",
     type: ChannelType.GuildText,
     overwrites: (guild) => [
       {
@@ -60,7 +66,7 @@ const CHANNEL_PRESETS = {
   },
   announcement: {
     label: "📢 Avisos (Leitura)",
-    description: "Texto: Apenas leitura.",
+    description: "Texto: Todos leem, ninguém fala.",
     type: ChannelType.GuildText,
     overwrites: (guild) => [
       {
@@ -70,6 +76,19 @@ const CHANNEL_PRESETS = {
       },
     ],
   },
+  staff_text: {
+    // <--- ESTE ESTAVA FALTANDO OU NÃO APARECENDO
+    label: "🕵️ Chat Staff (Privado)",
+    description: "Texto: Invisível para membros.",
+    type: ChannelType.GuildText,
+    overwrites: (guild) => [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      },
+    ],
+  },
+  // --- CANAIS DE VOZ ---
   public_voice: {
     label: "🔊 Voz Pública",
     description: "Voz: Aberto para todos.",
@@ -81,6 +100,18 @@ const CHANNEL_PRESETS = {
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.Connect,
         ],
+      },
+    ],
+  },
+  staff_voice: {
+    // <--- ESTE TAMBÉM
+    label: "🔒 Voz Staff (Privado)",
+    description: "Voz: Apenas Staff conecta.",
+    type: ChannelType.GuildVoice,
+    overwrites: (guild) => [
+      {
+        id: guild.roles.everyone.id,
+        deny: [PermissionsBitField.Flags.ViewChannel],
       },
     ],
   },
@@ -106,13 +137,12 @@ module.exports = {
       return message.reply("🔒 Sem permissão.");
 
     const embed = new EmbedBuilder()
-      .setTitle("🎛️ Infraestrutura Completa (Zero Trust)")
-      .setDescription("Gerencie Categorias, Canais de Texto e Voz.")
+      .setTitle("🎛️ Infraestrutura (Zero Trust)")
+      .setDescription(
+        "Gerencie a estrutura do servidor.\n\n" +
+          "**1.** Clique em Criar.\n**2.** Escolha Nome e Tipo.\n**3.** Escolha a Categoria.\n**4.** Escolha a Permissão."
+      )
       .setColor(0x2b2d31)
-      .addFields({
-        name: "Modelos",
-        value: "Categorias, Texto e Voz com permissões prontas.",
-      })
       .setThumbnail(message.guild.iconURL());
 
     const row = new ActionRowBuilder().addComponents(

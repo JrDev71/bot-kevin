@@ -7,6 +7,7 @@ const {
   ChannelType,
   PermissionsBitField,
   ChannelSelectMenuBuilder,
+  StringSelectMenuBuilder,
 } = require("discord.js");
 
 const { BTN, MDL, SEL, CHANNEL_PRESETS } = require("../commands/channelPanel");
@@ -15,11 +16,16 @@ const logEmbed = require("../utils/logEmbed");
 const MDL_CREATE = "mdl_ch_create";
 const MDL_NAME_EDIT = "mdl_ch_rename";
 
+// Cache para guardar os dados enquanto o usuário navega pelos menus
+// Formato: userId => { name: "Nome", type: ChannelType }
+const creationCache = new Map();
+
 module.exports = async (interaction) => {
   const isButton = interaction.isButton();
   const isModal = interaction.isModalSubmit();
   const isSelect = interaction.isAnySelectMenu();
 
+  // Verificação de Segurança
   const trustedRoles = process.env.STAFF_TRUSTED_ROLES?.split(",") || [];
   const isStaff =
     interaction.member.permissions.has(
@@ -28,21 +34,31 @@ module.exports = async (interaction) => {
     interaction.member.roles.cache.some((r) => trustedRoles.includes(r.id));
 
   if (!isStaff && (isButton || isModal || isSelect)) {
-    // Verificação simples de segurança
-    if (interaction.customId.includes("_ch_"))
+    if (
+      [
+        BTN.CREATE,
+        BTN.DELETE,
+        BTN.EDIT,
+        SEL.DEL,
+        SEL.EDIT,
+        SEL.TYPE,
+        SEL.CAT,
+      ].includes(interaction.customId)
+    ) {
       return interaction.reply({
         content: "🔒 Acesso negado.",
         ephemeral: true,
       });
+    }
   }
 
   // --- BOTÕES ---
   if (isButton) {
-    // 1. CRIAR
+    // 1. CRIAR (Inicia o fluxo com Modal de Nome/Tipo)
     if (interaction.customId === BTN.CREATE) {
       const modal = new ModalBuilder()
         .setCustomId(MDL_CREATE)
-        .setTitle("Criar Infraestrutura");
+        .setTitle("Criar Novo Canal");
       modal.addComponents(
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
@@ -63,36 +79,34 @@ module.exports = async (interaction) => {
       return interaction.showModal(modal);
     }
 
-    // 2. DELETAR (Agora inclui Categorias na lista)
+    // 2. DELETAR
     if (interaction.customId === BTN.DELETE) {
       const menu = new ChannelSelectMenuBuilder()
         .setCustomId(SEL.DEL)
-        .setPlaceholder("Selecione Canal ou Categoria")
+        .setPlaceholder("Selecione para DELETAR")
         .setChannelTypes(
           ChannelType.GuildText,
           ChannelType.GuildVoice,
           ChannelType.GuildCategory
-        ); // <--- ADICIONADO
-
+        );
       const row = new ActionRowBuilder().addComponents(menu);
       return interaction.reply({
-        content: "Selecione para apagar:",
+        content: "Selecione o canal/categoria para apagar:",
         components: [row],
         ephemeral: true,
       });
     }
 
-    // 3. EDITAR (Agora inclui Categorias na lista)
+    // 3. EDITAR
     if (interaction.customId === BTN.EDIT) {
       const menu = new ChannelSelectMenuBuilder()
         .setCustomId(SEL.EDIT)
-        .setPlaceholder("Selecione Canal ou Categoria")
+        .setPlaceholder("Selecione para EDITAR")
         .setChannelTypes(
           ChannelType.GuildText,
           ChannelType.GuildVoice,
           ChannelType.GuildCategory
-        ); // <--- ADICIONADO
-
+        );
       const row = new ActionRowBuilder().addComponents(menu);
       return interaction.reply({
         content: "Selecione para renomear:",
@@ -104,69 +118,40 @@ module.exports = async (interaction) => {
 
   // --- MODAIS ---
   if (isModal) {
-    // 1. PÓS-MODAL DE CRIAÇÃO -> SELETOR DE PRESET
+    // 1. PÓS-MODAL: IDENTIFICAR TIPO E PEDIR CATEGORIA (SE NECESSÁRIO)
     if (interaction.customId === MDL_CREATE) {
       const name = interaction.fields.getTextInputValue("c_name");
       const typeInput = interaction.fields
         .getTextInputValue("c_type")
         .toLowerCase();
 
-      // Detecta o tipo baseado no texto
-      let filterType = null;
-      if (typeInput.includes("cat")) filterType = ChannelType.GuildCategory;
+      let type = ChannelType.GuildText; // Default
+      if (typeInput.includes("cat")) type = ChannelType.GuildCategory;
       else if (typeInput.includes("voz") || typeInput.includes("voice"))
-        filterType = ChannelType.GuildVoice;
-      else filterType = ChannelType.GuildText;
+        type = ChannelType.GuildVoice;
 
-      // Filtra os presets disponíveis para esse tipo
-      const options = Object.entries(CHANNEL_PRESETS)
-        .filter(([_, data]) => data.type === filterType)
-        .map(([key, data]) => ({
-          label: data.label,
-          description: data.description,
-          value: key,
-          emoji:
-            data.type === ChannelType.GuildCategory
-              ? "📂"
-              : data.type === ChannelType.GuildVoice
-              ? "🔊"
-              : "💬",
-        }));
+      // Salva no cache para usar nos próximos passos
+      creationCache.set(interaction.user.id, { name, type });
 
-      if (options.length === 0)
-        return interaction.reply({
-          content: "Tipo inválido. Use: texto, voz ou categoria.",
+      // SE FOR CATEGORIA: Pula direto para Permissões (Categorias não ficam dentro de categorias)
+      if (type === ChannelType.GuildCategory) {
+        return askForPermissions(interaction, type);
+      }
+      // SE FOR CANAL: Pergunta "Onde colocar?" (Menu de Categoria)
+      else {
+        const catMenu = new ChannelSelectMenuBuilder()
+          .setCustomId(SEL.CAT)
+          .setPlaceholder("Selecione a Categoria Pai (Onde o canal ficará)")
+          .setChannelTypes(ChannelType.GuildCategory);
+
+        const row = new ActionRowBuilder().addComponents(catMenu);
+        await interaction.reply({
+          content: `Nome: **${name}**. Agora, selecione a **Categoria** onde ele será criado:`,
+          components: [row],
           ephemeral: true,
         });
-
-      // Passa o nome via cache ou customId (aqui usaremos um Select Menu com customId especial para simplificar, mas o ideal é Cache em prod)
-      // Vamos usar o "truque" de passar o nome no reply e pedir pro usuario selecionar, guardando no SelectMenu não dá.
-      // Vamos usar uma variável global temporária (Cuidado em produção com muito tráfego, mas para bot privado ok)
-      // O ideal é usar `creationCache` como fizemos no rolePanel.
-
-      // **IMPORTANTE**: Certifique-se de que `creationCache` está definido no escopo global deste arquivo.
-      // Se não tiver, defina: const creationCache = new Map(); no topo.
-      // Vou assumir que vou adicionar agora:
-
-      const { StringSelectMenuBuilder } = require("discord.js"); // Certifique-se de importar
-
-      // Armazena o nome temporariamente
-      global.channelCreationCache = global.channelCreationCache || new Map();
-      global.channelCreationCache.set(interaction.user.id, name);
-
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(SEL.TYPE)
-          .setPlaceholder("Selecione o Modelo de Permissão")
-          .addOptions(options)
-      );
-
-      await interaction.reply({
-        content: `Criando: **${name}**. Escolha a permissão:`,
-        components: [row],
-        ephemeral: true,
-      });
-      return true;
+        return true;
+      }
     }
 
     // 2. RENOMEAR
@@ -176,20 +161,17 @@ module.exports = async (interaction) => {
       const newName = interaction.fields.getTextInputValue("c_newname");
       const channel = interaction.guild.channels.cache.get(channelId);
 
-      if (!channel) return interaction.editReply("Não encontrado.");
+      if (!channel) return interaction.editReply("Canal não existe.");
 
       try {
         await channel.setName(newName);
         interaction.editReply(`✅ Renomeado para **${newName}**`);
-
-        // Log
         const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
-        const logEmbed = require("../utils/logEmbed");
         await logEmbed(
           interaction.client,
           logChannelId,
           "Infra Editada",
-          `**${newName}** (ID: ${channel.id}) editado por <@${interaction.user.id}>`,
+          `**${newName}** editado por <@${interaction.user.id}>`,
           0xf1c40f
         );
       } catch (e) {
@@ -201,14 +183,33 @@ module.exports = async (interaction) => {
 
   // --- SELETORES ---
   if (isSelect) {
-    // A. FINALIZAR CRIAÇÃO
+    // A. SELECIONOU A CATEGORIA PAI -> AGORA PEDE PERMISSÃO
+    if (interaction.customId === SEL.CAT) {
+      const parentId = interaction.values[0];
+      const cached = creationCache.get(interaction.user.id);
+
+      if (!cached)
+        return interaction.update({
+          content: "Tempo esgotado. Comece de novo.",
+          components: [],
+        });
+
+      // Atualiza o cache com o Pai escolhido
+      cached.parentId = parentId;
+      creationCache.set(interaction.user.id, cached);
+
+      // Agora pede o tipo de permissão (Público, Staff, etc)
+      return askForPermissions(interaction, cached.type, true); // true = é update da mensagem anterior
+    }
+
+    // B. SELECIONOU O PRESET (FINALIZAÇÃO)
     if (interaction.customId === SEL.TYPE) {
       await interaction.deferUpdate();
       const presetKey = interaction.values[0];
       const preset = CHANNEL_PRESETS[presetKey];
-      const name = global.channelCreationCache?.get(interaction.user.id);
+      const cached = creationCache.get(interaction.user.id);
 
-      if (!name)
+      if (!cached)
         return interaction.editReply({
           content: "Tempo esgotado.",
           components: [],
@@ -216,7 +217,8 @@ module.exports = async (interaction) => {
 
       try {
         const overwrites = preset.overwrites(interaction.guild);
-        // Staff sempre vê
+
+        // Garante que quem criou (Staff) possa ver/gerenciar, mesmo se for privado
         overwrites.push({
           id: interaction.user.id,
           allow: [
@@ -227,20 +229,19 @@ module.exports = async (interaction) => {
         });
 
         const ch = await interaction.guild.channels.create({
-          name: name,
+          name: cached.name,
           type: preset.type,
+          parent: cached.parentId, // Define a categoria pai (pode ser undefined se for Categoria)
           permissionOverwrites: overwrites,
         });
 
-        global.channelCreationCache.delete(interaction.user.id);
+        creationCache.delete(interaction.user.id);
         interaction.editReply({
-          content: `✅ **${name}** criado!`,
+          content: `✅ **${cached.name}** criado com sucesso em **${preset.label}**!`,
           components: [],
         });
 
-        // Log
         const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
-        const logEmbed = require("../utils/logEmbed");
         await logEmbed(
           interaction.client,
           logChannelId,
@@ -250,40 +251,37 @@ module.exports = async (interaction) => {
         );
       } catch (e) {
         interaction.editReply({
-          content: `Erro: ${e.message}`,
+          content: `❌ Erro ao criar: ${e.message}`,
           components: [],
         });
       }
       return true;
     }
 
-    // B. DELETAR
+    // C. DELETAR
     if (interaction.customId === SEL.DEL) {
       await interaction.deferUpdate();
       const channelId = interaction.values[0];
       const channel = interaction.guild.channels.cache.get(channelId);
-      if (!channel) return interaction.editReply("Não encontrado.");
-
-      const name = channel.name;
-      const typeName =
-        channel.type === ChannelType.GuildCategory ? "Categoria" : "Canal";
-
-      // Se for categoria, avisa que os canais dentro podem ficar órfãos (o Discord não apaga os filhos automaticamente, eles só perdem a pasta)
-
-      try {
-        await channel.delete();
-        interaction.editReply({
-          content: `🗑️ ${typeName} **${name}** deletado.`,
+      if (!channel)
+        return interaction.editReply({
+          content: "Não encontrado.",
           components: [],
         });
 
+      try {
+        const name = channel.name;
+        await channel.delete();
+        interaction.editReply({
+          content: `🗑️ **${name}** deletado.`,
+          components: [],
+        });
         const logChannelId = interaction.client.config.CHANNEL_UPDATE_LOG_ID;
-        const logEmbed = require("../utils/logEmbed");
         await logEmbed(
           interaction.client,
           logChannelId,
           "Infra Deletada",
-          `**${name}** (${typeName}) por <@${interaction.user.id}>`,
+          `**${name}** por <@${interaction.user.id}>`,
           0xff0000
         );
       } catch (e) {
@@ -295,7 +293,7 @@ module.exports = async (interaction) => {
       return true;
     }
 
-    // C. EDITAR (ABRE MODAL)
+    // D. EDITAR (ABRE MODAL)
     if (interaction.customId === SEL.EDIT) {
       const channelId = interaction.values[0];
       const channel = interaction.guild.channels.cache.get(channelId);
@@ -321,3 +319,41 @@ module.exports = async (interaction) => {
 
   return false;
 };
+
+// --- FUNÇÃO AUXILIAR PARA MOSTRAR MENU DE PRESETS ---
+async function askForPermissions(interaction, type, isUpdate = false) {
+  // Filtra os presets disponíveis para esse tipo de canal
+  const options = Object.entries(CHANNEL_PRESETS)
+    .filter(([_, data]) => data.type === type)
+    .map(([key, data]) => ({
+      label: data.label,
+      description: data.description,
+      value: key,
+      emoji:
+        data.type === ChannelType.GuildCategory
+          ? "📂"
+          : data.type === ChannelType.GuildVoice
+          ? "🔊"
+          : "💬",
+    }));
+
+  if (options.length === 0) {
+    const msg = "Tipo inválido ou sem presets. Use: texto, voz ou categoria.";
+    return isUpdate
+      ? interaction.update({ content: msg, components: [] })
+      : interaction.reply({ content: msg, ephemeral: true });
+  }
+
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(SEL.TYPE)
+      .setPlaceholder("Selecione o Modelo de Permissão")
+      .addOptions(options)
+  );
+
+  const content =
+    "Agora escolha o **Modelo de Permissão** (Quem pode ver/entrar):";
+  return isUpdate
+    ? interaction.update({ content, components: [row] })
+    : interaction.reply({ content, components: [row], ephemeral: true });
+}

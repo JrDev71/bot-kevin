@@ -33,12 +33,20 @@ const {
   handleUnlockdownAll,
 } = require("../commands/lockdown");
 const { handleBotInfo } = require("../commands/botinfo");
+
+// --- IMPORTAÇÕES DOS PAINÉIS DE GESTÃO ---
 const { sendRolePanel } = require("../commands/rolePanel"); // Painel de Cargos
-const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de Canais (NOVO)
+const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de Canais
+const { handleModPanel } = require("../commands/modPanel"); // Painel de Moderação (NOVO)
 
 const PREFIX = "k!";
 
-// Função auxiliar para criar embeds de feedback
+// Emojis para o comando Roles
+const EMOJIS = {
+  FREEFIRE_ID: "1437889904406433974",
+  VALORANT_ID: "1437889927613517975",
+};
+
 const createFeedbackEmbed = (title, description, color = 0xff0000) => {
   return new EmbedBuilder()
     .setTitle(title)
@@ -75,9 +83,11 @@ module.exports = async (message) => {
   if (!message.content.startsWith(PREFIX)) {
     if (state.isActive) {
       const currentLetter = state.currentLetter;
+
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
+
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -142,6 +152,14 @@ module.exports = async (message) => {
     return handleHelp(message);
   if (["sistemas", "botinfo"].includes(command)) return handleBotInfo(message);
 
+  // --- PAINÉIS DE GESTÃO (ZERO TRUST) ---
+  if (command === "cargo" || command === "cargos")
+    return sendRolePanel(message);
+  if (command === "canal" || command === "canais" || command === "infra")
+    return handleChannelPanel(message);
+  if (command === "mod" || command === "punir" || command === "justice")
+    return handleModPanel(message); // <--- NOVO
+
   // --- SISTEMA VIP ---
   if (
     [
@@ -156,23 +174,17 @@ module.exports = async (message) => {
   )
     return handleVipCommands(message, command, args);
 
-  // --- PROTEÇÃO ---
+  // --- SISTEMA DE PROTEÇÃO ---
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
 
-  // --- PAINÉIS DE GESTÃO (NOVO) ---
-  if (command === "cargo" || command === "cargos")
-    return sendRolePanel(message);
-  if (command === "canal" || command === "canais" || command === "infra")
-    return handleChannelPanel(message);
-
-  // --- MODERAÇÃO BÁSICA ---
+  // --- MODERAÇÃO BÁSICA (Manual) ---
   if (command === "ban") return handleBan(message, args);
   if (command === "unban") return handleUnban(message, args);
   if (command === "kick") return handleKick(message, args);
   if (command === "nuke") return handleNuke(message);
 
-  // --- MODERAÇÃO TEMPORAL ---
+  // --- MODERAÇÃO TEMPORAL (Manual) ---
   if (command === "mute") return handleMute(message, args);
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
@@ -188,19 +200,60 @@ module.exports = async (message) => {
   if (["pd", "setpd", "removepd"].includes(command))
     return handlePDCommand(message, command, args);
 
-  // --- AVATAR & UTIL ---
+  // --- AVATAR ---
   if (command === "av") return handleAvatar(message, args);
-  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS LEGADO (ROLES) ---
 
-  // Mantido apenas se você ainda usar o sistema de reação por emoji,
-  // mas o k!cargo (Painel Novo) é superior. Se quiser remover, apague o bloco abaixo.
+  // --- REPEAT ---
+  if (command === "repeat") return handleRepeat(message, args); // --- PAINEL DE CARGOS (ROLES - LEGADO/PÚBLICO) ---
+
   if (command === "roles") {
-    // (Lógica antiga do painel de reação mantida se necessário, mas recomendável migrar para k!cargo)
-    // Se decidir remover, apague este bloco. Por segurança, estou mantendo a lógica antiga aqui
-    // apenas se você ainda a usa. Caso contrário, o k!cargo acima já cobre.
-    const { handleRoleInteractions } = require("../commands/rolePanel");
-    // Se a intenção for usar o novo painel:
-    return sendRolePanel(message);
+    if (!message.member.permissions.has("MANAGE_GUILD")) {
+      return message.channel.send({
+        embeds: [
+          createFeedbackEmbed(
+            "🔒 Sem Permissão",
+            `Requer **Gerenciar Servidor**.`
+          ),
+        ],
+      });
+    }
+    const freefireEmoji = message.guild.emojis.cache.get(EMOJIS.FREEFIRE_ID);
+    const valorantEmoji = message.guild.emojis.cache.get(EMOJIS.VALORANT_ID);
+    const rolePanelEmbed = new EmbedBuilder()
+      .setTitle("🎮 Escolha seu Jogo")
+      .setDescription(
+        `Reaja de acordo com seu jogo:\n\n${
+          freefireEmoji || "FREEFIRE"
+        } — Cargo de Free Fire\n${
+          valorantEmoji || "VALORANT"
+        } — Cargo de Valorant\n\n*Você pode remover o cargo tirando a reação.*`
+      )
+      .setColor(0x9b59b6)
+      .setThumbnail(message.guild.iconURL({ dynamic: true }))
+      .setTimestamp();
+    try {
+      const sentMessage = await message.channel.send({
+        embeds: [rolePanelEmbed],
+      });
+      await sentMessage.react(EMOJIS.FREEFIRE_ID);
+      await sentMessage.react(EMOJIS.VALORANT_ID);
+      return message.author
+        .send({
+          embeds: [
+            createFeedbackEmbed(
+              "✅ Painel Postado",
+              `ID da Mensagem: \`${sentMessage.id}\`\nAtualize o \`.env\` e reinicie.`,
+              0x00ff00
+            ),
+          ],
+        })
+        .catch(() => {});
+    } catch (error) {
+      console.error("Erro Roles:", error);
+      return message.channel.send({
+        embeds: [createFeedbackEmbed("❌ Erro", "Falha ao postar painel.")],
+      });
+    }
   } // --- JOGO STOP ---
 
   if (command === "stop") {
@@ -227,7 +280,7 @@ module.exports = async (message) => {
       `✅ **STOP!** Rodada encerrada. Iniciando revisão...`
     );
     await postReviewEmbed(state, message.channel);
-  } // --- RESPOSTA OBSOLETA ---
+  }
 
   if (command === "resposta" || command === "respostas") {
     return message.channel

@@ -1,5 +1,4 @@
 // game/scoreSystem.js
-
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -7,31 +6,40 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-// IDs Exportáveis para Botões e Modals
 const FINALIZE_BUTTON_ID = "finalize_stop_scoring";
 const EDIT_BUTTON_ID = "edit_review_answers";
 const INVALIDATE_MODAL_ID = "invalidate_modal";
 const PLAYER_INPUT_ID = "player_to_invalidate";
 const CATEGORY_INPUT_ID = "category_to_invalidate";
 
-/**
- * Função principal: Calcula a pontuação final de uma rodada, acumula e envia o resultado.
- */
+// --- CONFIGURAÇÃO VISUAL ---
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
+const COLOR_NEUTRAL = 0x2f3136;
+
+// Função auxiliar de Embed
+const createGameEmbed = (title, description) => {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(COLOR_NEUTRAL)
+    .setImage(HEADER_IMAGE)
+    .setTimestamp();
+};
+
 async function calculateScores(state, channel) {
   if (Object.keys(state.players).length === 0) {
-    return channel.send(
-      "Ninguém respondeu a tempo! Rodada encerrada sem pontuação."
-    );
+    return channel.send({
+      embeds: [createGameEmbed("Fim da Rodada", "Ninguém respondeu a tempo!")],
+    });
   }
-
+  // ... (Lógica de cálculo de pontos mantida idêntica) ...
   const categories = state.categories;
-  const allAnswers = {}; // [1, 2: Lógica de Contagem]
-
+  const allAnswers = {};
   for (const playerID in state.players) {
     state.players[playerID].score = 0;
     state.players[playerID].unique = new Array(categories.length).fill(true);
   }
-
   categories.forEach((category, catIndex) => {
     allAnswers[category] = {};
     for (const playerID in state.players) {
@@ -40,36 +48,30 @@ async function calculateScores(state, channel) {
         allAnswers[category][answer] = (allAnswers[category][answer] || 0) + 1;
       }
     }
-  }); // 3. Atribuição de Pontos e Acúmulo Total
-
+  });
   for (const playerID in state.players) {
     const player = state.players[playerID];
     let totalRoundScore = 0;
-
     player.answers.forEach((answer, catIndex) => {
       if (!answer || answer === "") return;
-
       const categoryName = categories[catIndex];
       const usageCount = allAnswers[categoryName][answer];
-
       let points = 0;
-
       if (usageCount === 1) {
-        points = 20; // ÚNICA
+        points = 20;
       } else if (usageCount > 1) {
-        points = 10; // REPETIDA
+        points = 10;
         player.unique[catIndex] = false;
       }
-
       totalRoundScore += points;
     });
-
     player.score = totalRoundScore;
-    // ACUMULA A PONTUAÇÃO GERAL
     state.totalScores[playerID] =
       (state.totalScores[playerID] || 0) + totalRoundScore;
-  } // 4. Criação do Embed de Resultados FINAIS (após revisão)
+  }
+  // ... (Fim da lógica de cálculo) ...
 
+  // --- EMBED DE RESULTADO PROFISSIONAL ---
   const playersForRanking = Object.keys(state.players).map((playerID) => ({
     id: playerID,
     roundScore: state.players[playerID].score,
@@ -77,157 +79,124 @@ async function calculateScores(state, channel) {
     answers: state.players[playerID].answers,
     unique: state.players[playerID].unique,
   }));
-
   const sortedPlayers = playersForRanking.sort(
     (a, b) => b.totalScore - a.totalScore
   );
 
   const fields = sortedPlayers.map((data, index) => {
     const member = channel.guild.members.cache.get(data.id) || {
-      user: { tag: "Jogador Desconhecido" },
+      user: { tag: "Desconhecido" },
     };
-
     const formattedAnswers = data.answers
       .map((ans, catIndex) => {
-        if (!ans || ans === "") {
-          return "❌ --- (0 pts)";
-        }
+        if (!ans || ans === "") return "❌ `---`";
         const symbol = data.unique[catIndex] ? "⭐" : "🔄";
-        const pts = data.unique[catIndex] ? 20 : 10;
-        return `${symbol} ${ans} (${pts} pts)`;
+        return `${symbol} ${ans}`;
       })
       .join("\n");
-
     return {
-      name: `${index + 1}. ${member.user.tag} | RODADA: ${
-        data.roundScore
-      } | TOTAL: ${data.totalScore}`,
-      value: formattedAnswers,
-      inline: false,
+      name: `#${index + 1} ${member.user.tag}`,
+      value: `**Rodada:** ${data.roundScore} | **Total:** ${data.totalScore}\n${formattedAnswers}`,
+      inline: true,
     };
   });
 
-  const resultEmbed = new EmbedBuilder()
-    .setTitle(`🏆 RESULTADO OFICIAL DA RODADA ${state.currentRound}`)
-    .setDescription(
-      `Pontuação validada. Início da Próxima Rodada em 10 segundos!`
-    )
+  const resultEmbed = createGameEmbed(
+    `🏆 Resultado: Rodada ${state.currentRound}`,
+    `Próxima rodada em instantes...`
+  )
     .setFields(fields)
-    .setColor(0x00ffd7)
-    .setFooter({
-      text: "⭐ Único (20 pts) | 🔄 Repetido (10 pts) | ❌ Invalidado/Vazio (0 pts)",
-    })
-    .setTimestamp();
+    .setFooter({ text: "⭐ 20 pts | 🔄 10 pts | ❌ 0 pts" });
 
   await channel.send({ embeds: [resultEmbed] });
 }
 
-/**
- * Função para postar todas as respostas para revisão manual.
- */
 async function postReviewEmbed(state, channel) {
   const categories = state.categories;
   const fields = [];
 
-  // Lista todas as respostas de todos os jogadores para revisão
   categories.forEach((category, catIndex) => {
     let answerList = "";
     for (const playerID in state.players) {
       const member = channel.guild.members.cache.get(playerID) || {
-        user: { tag: "Jogador Desconhecido" },
+        user: { tag: "..." },
       };
-      // Se a resposta estiver vazia (foi invalidada), mostra como "❌ INVALIDADO"
-      const answer =
-        state.players[playerID].answers[catIndex] || "❌ INVALIDADO";
-      answerList += `**${member.user.tag}:** ${answer}\n`;
+      const answer = state.players[playerID].answers[catIndex] || "❌";
+      answerList += `**${member.user.username}:** ${answer}\n`;
     }
-
     fields.push({
-      name: `📝 Categoria: ${category}`,
-      value: answerList,
+      name: category,
+      value: answerList || "Sem respostas",
       inline: true,
     });
   });
 
-  const reviewEmbed = new EmbedBuilder()
-    .setTitle(`👁️ REVISÃO MANUAL - LETRA ${state.currentLetter}`)
-    .setDescription(
-      `Todas as respostas da rodada foram listadas abaixo. **Staff:** Use o botão de correção para invalidar palavras erradas/não existentes.\n\n` +
-        `Após a revisão, **clique em FINALIZAR PONTUAÇÃO** para somar os pontos e começar a próxima rodada.`
-    )
-    .setFields(fields)
-    .setColor(0xffa500) // Laranja (Alerta)
-    .setTimestamp();
+  const reviewEmbed = createGameEmbed(
+    `👁️ Revisão: Letra ${state.currentLetter}`,
+    "Analise as respostas abaixo. Se houver algo inválido, use o botão de **Corrigir**.\nQuando estiver pronto, clique em **Finalizar**."
+  );
+  reviewEmbed.setFields(fields);
 
-  // Botões de Finalização e Correção (NOVA actionRow)
+  // --- BOTÕES CINZA/SECONDARY (CLEAN) ---
   const actionRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(EDIT_BUTTON_ID)
-      .setLabel("✏️ CORRIGIR / INVALIDAR RESPOSTA")
-      .setStyle(ButtonStyle.Primary),
+      .setLabel("Corrigir / Invalidar")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("✏️"),
     new ButtonBuilder()
       .setCustomId(FINALIZE_BUTTON_ID)
-      .setLabel("✅ FINALIZAR PONTUAÇÃO")
-      .setStyle(ButtonStyle.Success)
+      .setLabel("Confirmar Pontuação")
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji("✅")
   );
 
-  // Tentamos editar a mensagem de revisão se ela já existir
   if (state.reviewMessageId) {
     try {
       const oldMessage = await channel.messages.fetch(state.reviewMessageId);
       await oldMessage.edit({
         embeds: [reviewEmbed],
         components: [actionRow],
-        content: " ",
+        content: "",
       });
       return;
-    } catch (e) {
-      console.error("Erro ao editar a mensagem de revisão:", e);
-    }
+    } catch (e) {}
   }
 
-  // Se não existir, envia uma nova
   const sentMessage = await channel.send({
     embeds: [reviewEmbed],
     components: [actionRow],
   });
-  state.reviewMessageId = sentMessage.id; // Salva o ID da nova mensagem de revisão
+  state.reviewMessageId = sentMessage.id;
 }
 
-/**
- * Função para exibir o placar final (fim de jogo). (Mantida)
- */
 async function displayFinalScores(state, channel) {
   const sortedFinalPlayers = Object.entries(state.totalScores).sort(
     ([, a], [, b]) => b - a
   );
 
-  if (sortedFinalPlayers.length === 0) {
-    return channel.send("O jogo terminou, mas ninguém pontuou.");
-  }
+  if (sortedFinalPlayers.length === 0)
+    return channel.send("Jogo encerrado sem pontuação.");
 
   const fields = sortedFinalPlayers.map(([playerID, score], index) => {
     const member = channel.guild.members.cache.get(playerID) || {
-      user: { tag: "Jogador Desconhecido" },
+      user: { tag: "Unknown" },
     };
+    const medal =
+      index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : "";
     return {
-      name: `${index + 1}. ${member.user.tag}`,
-      value: `Total Acumulado: **${score} Pontos**`,
+      name: `${medal} ${index + 1}º Lugar`,
+      value: `**${member.user.tag}**\nPontuação Final: **${score}**`,
       inline: false,
     };
   });
 
-  const finalEmbed = new EmbedBuilder()
-    .setTitle(`🏆 PLACAR FINAL DO JOGO STOP (${state.maxRounds} RODADAS)`)
-    .setDescription(
-      "Parabéns aos vencedores! O jogo foi encerrado e o placar total está zerado para o próximo jogo."
-    )
-    .setFields(fields)
-    .setColor(0x00ffd7)
-    .setTimestamp();
+  const finalEmbed = createGameEmbed(
+    `🏆 Placar Final`,
+    `O jogo de ${state.maxRounds} rodadas chegou ao fim!`
+  ).setFields(fields);
 
   await channel.send({ embeds: [finalEmbed] });
-
   state.totalScores = {};
 }
 

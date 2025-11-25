@@ -14,20 +14,26 @@ const VERIFY_BUTTON_ID = "start_verification";
 const APPROVE_BUTTON_ID = "approve_user";
 const REJECT_BUTTON_ID = "reject_user";
 
+// --- CONFIGURAÇÃO VISUAL ---
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
+const COLOR_NEUTRAL = 0x2f3136;
+
 module.exports = async (interaction) => {
   const config = interaction.client.config;
   const isButton = interaction.isButton();
   const isModal = interaction.isModalSubmit();
 
-  // 1. CLIQUE NO BOTÃO "VERIFICAR" (Abre o Modal)
+  // 1. BOTÃO "VERIFICAR" -> MODAL
   if (isButton && interaction.customId === VERIFY_BUTTON_ID) {
     const modal = new ModalBuilder()
       .setCustomId("referral_modal")
-      .setTitle("Formulário de referência");
+      .setTitle("Verificação de Acesso");
 
     const referredUser = new TextInputBuilder()
       .setCustomId("referred_user_input")
-      .setLabel("Quem você conhece? (Nome ou ID)")
+      .setLabel("Quem convidou você?")
+      .setPlaceholder("Digite o nome ou ID")
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
@@ -36,7 +42,7 @@ module.exports = async (interaction) => {
     return true;
   }
 
-  // 2. ENVIO DO MODAL (Envia Ficha para Staff)
+  // 2. ENVIO DO MODAL -> FICHA PARA STAFF
   if (isModal && interaction.customId === "referral_modal") {
     await interaction.deferReply({ ephemeral: true });
     const referredUsername = interaction.fields.getTextInputValue(
@@ -48,49 +54,53 @@ module.exports = async (interaction) => {
 
     if (!approvalChannel) {
       return interaction.followUp({
-        content: "Erro interno: Canal de aprovação não configurado.",
+        content: "❌ Erro interno: Canal de aprovação não configurado.",
         ephemeral: true,
       });
     }
 
     const approvalEmbed = new EmbedBuilder()
-      .setTitle(`👤 Nova Ficha: ${interaction.user.tag}`)
+      .setTitle(`Solicitação de Acesso`)
       .setThumbnail(interaction.user.displayAvatarURL())
+      .setImage(HEADER_IMAGE) // IMAGEM PADRÃO
       .addFields(
         {
-          name: "Membro",
-          value: `${interaction.user} (${interaction.user.id})`,
+          name: "Usuário",
+          value: `${interaction.user} (\`${interaction.user.id}\`)`,
+          inline: true,
         },
-        { name: "Referência", value: referredUsername },
-        { name: "Status", value: "PENDENTE" }
+        { name: "Referência", value: `\`${referredUsername}\``, inline: true },
+        { name: "Status", value: "🟡 Aguardando Análise" }
       )
-      .setColor(0xffa500);
+      .setColor(COLOR_NEUTRAL) // COR NEUTRA
+      .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
+      // BOTÕES CINZA (SECONDARY) - Mais limpo e profissional
       new ButtonBuilder()
         .setCustomId(APPROVE_BUTTON_ID)
-        .setLabel("Aprovar")
-        .setStyle(ButtonStyle.Success),
+        .setLabel("Aprovar Acesso")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("✅"),
       new ButtonBuilder()
         .setCustomId(REJECT_BUTTON_ID)
-        .setLabel("Rejeitar")
-        .setStyle(ButtonStyle.Danger)
+        .setLabel("Recusar Acesso")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("⛔")
     );
 
-    // Monta a menção para a Staff
-    let mentions = "";
-    if (config.APPROVER_ROLE_ID) mentions += `<@&${config.APPROVER_ROLE_ID}> `;
-    if (config.SECONDARY_APPROVER_ROLE_ID)
-      mentions += `<@&${config.SECONDARY_APPROVER_ROLE_ID}>`;
-    if (!mentions) mentions = "@Staff";
+    // Menciona a Staff de forma discreta
+    const mention = config.APPROVER_ROLE_ID
+      ? `<@&${config.APPROVER_ROLE_ID}>`
+      : "";
 
     await approvalChannel.send({
-      content: mentions,
+      content: mention,
       embeds: [approvalEmbed],
       components: [row],
     });
     await interaction.followUp({
-      content: `✅ Ficha enviada!`,
+      content: `✅ Sua solicitação foi enviada para a equipe. Aguarde.`,
       ephemeral: true,
     });
     return true;
@@ -101,7 +111,7 @@ module.exports = async (interaction) => {
     isButton &&
     [APPROVE_BUTTON_ID, REJECT_BUTTON_ID].includes(interaction.customId)
   ) {
-    // Verifica Permissões (Cargo 1, Cargo 2 ou Admin)
+    // Checagem de Permissão (Mantida)
     const hasPrimary =
       config.APPROVER_ROLE_ID &&
       interaction.member.roles.cache.has(config.APPROVER_ROLE_ID);
@@ -114,7 +124,7 @@ module.exports = async (interaction) => {
 
     if (!hasPrimary && !hasSecondary && !isAdmin) {
       return interaction.reply({
-        content: "❌ Você não tem permissão para aprovar/rejeitar.",
+        content: "🔒 Apenas a equipe de verificação pode interagir.",
         ephemeral: true,
       });
     }
@@ -122,58 +132,55 @@ module.exports = async (interaction) => {
     await interaction.deferUpdate();
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0]);
-    // Extrai ID com Regex
+    // Garante visual padrão na edição
+    embed.setImage(HEADER_IMAGE).setColor(COLOR_NEUTRAL);
+
+    // Regex para pegar ID do campo "Usuário" ou "Membro"
     const targetId = embed.data.fields
-      .find((f) => f.name === "Membro")
+      .find((f) => f.name === "Usuário" || f.name === "Membro")
       .value.match(/\((\d+)\)/)?.[1];
     const member = await interaction.guild.members
       .fetch(targetId)
       .catch(() => null);
 
     if (!member) {
-      embed
-        .setColor(0xaaaaaa)
-        .data.fields.find((f) => f.name === "Status").value =
-        "SAIU DO SERVIDOR";
+      embed.data.fields.find((f) => f.name === "Status").value =
+        "❌ Usuário saiu do servidor";
       return interaction.editReply({ embeds: [embed], components: [] });
     }
 
     if (interaction.customId === APPROVE_BUTTON_ID) {
-      // Aprovar: Dá cargo e loga
       try {
         await member.roles.add(config.VERIFIED_ROLE_ID);
-        embed
-          .setColor(0x00ff00)
-          .data.fields.find(
-            (f) => f.name === "Status"
-          ).value = `✅ APROVADO por ${interaction.user.tag}`;
+        embed.data.fields.find(
+          (f) => f.name === "Status"
+        ).value = `✅ Aprovado por ${interaction.user.username}`;
 
+        // Log de Aprovação
         const logChannel = interaction.guild.channels.cache.get(
           config.APPROVED_LOG_CHANNEL_ID
         );
         if (logChannel)
           logChannel.send({
-            content: `✅ Aprovado: ${member}`,
+            content: `✅ Acesso liberado: ${member}`,
             embeds: [embed],
           });
       } catch (error) {
-        console.error("Erro ao dar cargo de verificado:", error);
-        embed.data.fields.find((f) => f.name === "Status").value =
-          "ERRO AO DAR CARGO";
+        console.error("Erro ao dar cargo:", error);
         await interaction.followUp({
-          content: "❌ Erro ao dar o cargo. Verifique a hierarquia.",
+          content: "❌ Erro de permissão ao dar o cargo.",
           ephemeral: true,
         });
+        return;
       }
     } else {
-      // Rejeitar: Avisa user
-      embed
-        .setColor(0xff0000)
-        .data.fields.find(
-          (f) => f.name === "Status"
-        ).value = `❌ REJEITADO por ${interaction.user.tag}`;
+      embed.data.fields.find(
+        (f) => f.name === "Status"
+      ).value = `⛔ Recusado por ${interaction.user.username}`;
       member
-        .send(`Sua verificação em **${interaction.guild.name}** foi rejeitada.`)
+        .send(
+          `Sua solicitação de acesso em **${interaction.guild.name}** foi recusada pela moderação.`
+        )
         .catch(() => {});
     }
 
@@ -181,5 +188,5 @@ module.exports = async (interaction) => {
     return true;
   }
 
-  return false; // Interação não é deste handler
+  return false;
 };

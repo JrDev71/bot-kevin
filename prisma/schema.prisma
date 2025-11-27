@@ -1,0 +1,46 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- TABELA VIP ---
+model Vip {
+  userId          String   @id @unique // ID do Discord
+  tier            String   @default("default")
+  since           DateTime @default(now())
+  expiresAt       DateTime?
+  customRoleId    String?  // ID da Tag criada
+  customChannelId String?  // ID do Canal criado
+  
+  friends         VipFriend[] // Relação com amigos
+}
+
+// Tabela para os amigos convidados pelos VIPs
+model VipFriend {
+  friendId String @id @unique // ID do amigo
+  ownerId  String // ID do dono do VIP que convidou
+  
+  owner    Vip    @relation(fields: [ownerId], references: [userId], onDelete: Cascade)
+}
+
+// --- TABELA PRIMEIRA DAMA (PD) ---
+model Pd {
+  memberId String   @id @unique
+  staffId  String   // Quem indicou
+  since    DateTime @default(now())
+}
+
+// --- TABELAS DE PROTEÇÃO ---
+model Panela {
+  userId String @id @unique
+}
+
+model Blacklist {
+  userId String @id @unique
+}

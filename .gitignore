@@ -1,3 +1,4 @@
 /node_modules
 .env
 pdData.json
+/generated/prisma

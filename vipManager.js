@@ -1,220 +1,250 @@
 // vipManager.js
-const fs = require("fs");
-const path = require("path");
+const prisma = require("./database");
 
-const VIP_FILE = path.resolve(__dirname, "vipData.json");
-// MAX_FRIENDS removido ou mantido alto para não limitar
-const MAX_FRIENDS = 100;
+const DEFAULT_DAYS = 30;
+const GUILD_ID = process.env.GUILD_ID; // Pega o ID do servidor do .env
 
-function loadVipData() {
-  if (!fs.existsSync(VIP_FILE)) return { vips: {}, friends: {} };
-  try {
-    return JSON.parse(fs.readFileSync(VIP_FILE, "utf-8"));
-  } catch (e) {
-    return { vips: {}, friends: {} };
-  }
-}
-
-function saveVipData(data) {
-  fs.writeFileSync(VIP_FILE, JSON.stringify(data, null, 2), "utf-8");
-}
+// --- FUNÇÕES DE GERENCIAMENTO (AGORA SÃO ASYNC) ---
 
 module.exports = {
-  MAX_FRIENDS,
+  // Não precisamos mais de MAX_FRIENDS aqui se for ilimitado no banco,
+  // mas manteremos para controle lógico se quiser voltar.
+  MAX_FRIENDS: 100,
 
-  // --- ADICIONAR VIP (DONO) ---
-  addVip: (userId, days = 30) => {
-    const data = loadVipData();
-    if (data.vips[userId]) return false;
+  /**
+   * Adiciona um novo usuário como VIP.
+   */
+  addVip: async (userId, days = DEFAULT_DAYS) => {
+    try {
+      // Verifica se já existe
+      const existing = await prisma.vip.findUnique({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+      });
+      if (existing) return false;
 
-    const now = Date.now();
-    const durationMs = days * 24 * 60 * 60 * 1000;
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
-    data.vips[userId] = {
-      tier: "default",
-      since: now,
-      expiresAt: now + durationMs,
-      friends: [],
-      customRoleId: null,
-      customChannelId: null,
-    };
-    saveVipData(data);
-    return true;
-  },
-
-  // --- RENOVAR VIP ---
-  addVipTime: (userId, days) => {
-    const data = loadVipData();
-    if (!data.vips[userId]) return false;
-
-    const durationMs = days * 24 * 60 * 60 * 1000;
-    const baseTime =
-      data.vips[userId].expiresAt > Date.now()
-        ? data.vips[userId].expiresAt
-        : Date.now();
-
-    data.vips[userId].expiresAt = baseTime + durationMs;
-    saveVipData(data);
-    return data.vips[userId].expiresAt;
-  },
-
-  // --- REMOVER VIP (DONO) ---
-  removeVip: (userId) => {
-    const data = loadVipData();
-    if (!data.vips[userId]) return { success: false };
-
-    const vipData = data.vips[userId];
-    const friends = vipData.friends || [];
-
-    // Remove este VIP da lista de 'friends' (Reverse Map)
-    friends.forEach((friendId) => {
-      if (data.friends[friendId]) {
-        // Se for array (novo formato), filtra. Se for string (velho), deleta.
-        if (Array.isArray(data.friends[friendId])) {
-          data.friends[friendId] = data.friends[friendId].filter(
-            (id) => id !== userId
-          );
-          if (data.friends[friendId].length === 0)
-            delete data.friends[friendId];
-        } else {
-          delete data.friends[friendId];
-        }
-      }
-    });
-
-    delete data.vips[userId];
-    saveVipData(data);
-
-    return {
-      success: true,
-      friendsToRemove: friends,
-      customRoleId: vipData.customRoleId,
-      customChannelId: vipData.customChannelId,
-    };
-  },
-
-  // --- CHECKER DE VALIDADE ---
-  checkExpiredVips: async (client) => {
-    const data = loadVipData();
-    const now = Date.now();
-    const expiredUsers = [];
-
-    for (const userId in data.vips) {
-      if (data.vips[userId].expiresAt && data.vips[userId].expiresAt < now) {
-        expiredUsers.push(userId);
-      }
-    }
-
-    if (expiredUsers.length === 0) return;
-    console.log(
-      `[VIP SYSTEM] Encontrados ${expiredUsers.length} VIPs expirados.`
-    );
-
-    const guildId = process.env.GUILD_ID;
-    const guild = client.guilds.cache.get(guildId);
-    const vipRoleId = process.env.VIP_ROLE_ID;
-
-    for (const userId of expiredUsers) {
-      const result = module.exports.removeVip(userId);
-
-      if (result.success && guild) {
-        const member = await guild.members.fetch(userId).catch(() => null);
-        if (member && vipRoleId)
-          await member.roles.remove(vipRoleId).catch(() => {});
-
-        if (result.customRoleId) {
-          const role = guild.roles.cache.get(result.customRoleId);
-          if (role) await role.delete("VIP Expirado").catch(() => {});
-        }
-        if (result.customChannelId) {
-          const channel = guild.channels.cache.get(result.customChannelId);
-          if (channel) await channel.delete("VIP Expirado").catch(() => {});
-        }
-      }
+      await prisma.vip.create({
+        data: {
+          userId,
+          guildId: GUILD_ID,
+          since: now,
+          expiresAt: expiresAt,
+        },
+      });
+      return true;
+    } catch (e) {
+      console.error("[DB ERROR] addVip:", e);
+      return false;
     }
   },
 
-  isVip: (userId) => {
-    const data = loadVipData();
-    return !!data.vips[userId];
-  },
-  getVipData: (userId) => {
-    const data = loadVipData();
-    return data.vips[userId];
-  },
+  /**
+   * Adiciona tempo ao VIP.
+   */
+  addVipTime: async (userId, days) => {
+    try {
+      const vip = await prisma.vip.findUnique({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+      });
+      if (!vip) return false;
 
-  updateVipData: (userId, updates) => {
-    const data = loadVipData();
-    if (!data.vips[userId]) return false;
-    data.vips[userId] = { ...data.vips[userId], ...updates };
-    saveVipData(data);
-    return true;
-  },
-
-  // --- SISTEMA DE AMIGOS (MULTI-TAG) ---
-
-  addFriend: (vipId, friendId) => {
-    const data = loadVipData();
-
-    if (!data.vips[vipId])
-      return { success: false, msg: "Você não possui um plano VIP ativo." };
-
-    // Verifica se já é amigo DESTE vip específico
-    if (data.vips[vipId].friends.includes(friendId)) {
-      return {
-        success: false,
-        msg: "Este usuário já está na sua lista de convidados.",
-      };
-    }
-
-    // Adiciona na lista do VIP
-    data.vips[vipId].friends.push(friendId);
-
-    // Atualiza o mapa reverso (suporta múltiplos VIPs agora)
-    if (!data.friends[friendId]) {
-      data.friends[friendId] = [vipId];
-    } else if (Array.isArray(data.friends[friendId])) {
-      if (!data.friends[friendId].includes(vipId)) {
-        data.friends[friendId].push(vipId);
-      }
-    } else {
-      // Migração de formato antigo (string) para novo (array)
-      data.friends[friendId] = [data.friends[friendId], vipId];
-    }
-
-    saveVipData(data);
-    return { success: true };
-  },
-
-  removeFriend: (vipId, friendId) => {
-    const data = loadVipData();
-
-    if (!data.vips[vipId]) return { success: false, msg: "Você não é VIP." };
-
-    if (!data.vips[vipId].friends.includes(friendId)) {
-      return {
-        success: false,
-        msg: "Este usuário não está na sua lista de convidados.",
-      };
-    }
-
-    // Remove da lista do VIP
-    data.vips[vipId].friends = data.vips[vipId].friends.filter(
-      (id) => id !== friendId
-    );
-
-    // Remove do mapa reverso
-    if (data.friends[friendId] && Array.isArray(data.friends[friendId])) {
-      data.friends[friendId] = data.friends[friendId].filter(
-        (id) => id !== vipId
+      const now = new Date();
+      // Se já venceu, soma a partir de agora. Se não, soma ao final atual.
+      const baseTime = vip.expiresAt > now ? vip.expiresAt : now;
+      const newExpiresAt = new Date(
+        baseTime.getTime() + days * 24 * 60 * 60 * 1000
       );
-      if (data.friends[friendId].length === 0) delete data.friends[friendId];
-    } else {
-      // Fallback para formato antigo
-      delete data.friends[friendId];
-    }
 
-    saveVipData(data);
-    return { success: true };
+      const updated = await prisma.vip.update({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+        data: { expiresAt: newExpiresAt },
+      });
+
+      return updated.expiresAt.getTime();
+    } catch (e) {
+      console.error("[DB ERROR] addVipTime:", e);
+      return false;
+    }
+  },
+
+  /**
+   * Remove VIP e limpa amigos.
+   */
+  removeVip: async (userId) => {
+    try {
+      const vip = await prisma.vip.findUnique({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+        include: { friends: true }, // Puxa a lista de amigos para retornar
+      });
+
+      if (!vip) return { success: false };
+
+      // O delete do Prisma com 'onDelete: Cascade' no schema já deveria apagar os amigos,
+      // mas vamos garantir deletando o registro VIP.
+      await prisma.vip.delete({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+      });
+
+      return {
+        success: true,
+        friendsToRemove: vip.friends.map((f) => f.friendId), // Retorna array de IDs
+        customRoleId: vip.customRoleId,
+        customChannelId: vip.customChannelId,
+      };
+    } catch (e) {
+      console.error("[DB ERROR] removeVip:", e);
+      return { success: false };
+    }
+  },
+
+  /**
+   * Verifica expirados e limpa.
+   */
+  checkExpiredVips: async (client) => {
+    try {
+      const now = new Date();
+      const expiredVips = await prisma.vip.findMany({
+        where: {
+          guildId: GUILD_ID,
+          expiresAt: { lt: now }, // lt = less than (menor que agora)
+        },
+      });
+
+      if (expiredVips.length === 0) return;
+      console.log(
+        `[VIP SYSTEM] Encontrados ${expiredVips.length} VIPs expirados.`
+      );
+
+      const guild = client.guilds.cache.get(GUILD_ID);
+      const vipRoleId = process.env.VIP_ROLE_ID;
+
+      for (const vip of expiredVips) {
+        // Remove do Banco
+        const result = await module.exports.removeVip(vip.userId);
+
+        // Remove do Discord
+        if (result.success && guild) {
+          const member = await guild.members
+            .fetch(vip.userId)
+            .catch(() => null);
+          if (member && vipRoleId)
+            await member.roles.remove(vipRoleId).catch(() => {});
+
+          if (result.customRoleId) {
+            const role = guild.roles.cache.get(result.customRoleId);
+            if (role) await role.delete("VIP Expirado").catch(() => {});
+          }
+          if (result.customChannelId) {
+            const channel = guild.channels.cache.get(result.customChannelId);
+            if (channel) await channel.delete("VIP Expirado").catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[DB ERROR] checkExpiredVips:", e);
+    }
+  },
+
+  /**
+   * Retorna dados formatados para o Bot.
+   */
+  getVipData: async (userId) => {
+    try {
+      const vip = await prisma.vip.findUnique({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+        include: { friends: true },
+      });
+
+      if (!vip) return null;
+
+      // Formata para ficar igual ao objeto que usávamos no JSON
+      return {
+        tier: vip.tier,
+        since: vip.since.getTime(),
+        expiresAt: vip.expiresAt ? vip.expiresAt.getTime() : null,
+        customRoleId: vip.customRoleId,
+        customChannelId: vip.customChannelId,
+        friends: vip.friends.map((f) => f.friendId), // Transforma em array de IDs
+      };
+    } catch (e) {
+      console.error("[DB ERROR] getVipData:", e);
+      return null;
+    }
+  },
+
+  /**
+   * Atualiza dados (Cargo/Canal).
+   */
+  updateVipData: async (userId, updates) => {
+    try {
+      await prisma.vip.update({
+        where: { userId_guildId: { userId, guildId: GUILD_ID } },
+        data: updates,
+      });
+      return true;
+    } catch (e) {
+      console.error("[DB ERROR] updateVipData:", e);
+      return false;
+    }
+  },
+
+  // --- AMIGOS ---
+
+  addFriend: async (vipId, friendId) => {
+    try {
+      const vip = await prisma.vip.findUnique({
+        where: { userId_guildId: { userId: vipId, guildId: GUILD_ID } },
+        include: { friends: true },
+      });
+
+      if (!vip) return { success: false, msg: "Você não é VIP." };
+
+      // Checa se já é amigo DESTE vip
+      if (vip.friends.some((f) => f.friendId === friendId)) {
+        return { success: false, msg: "Este usuário já está na sua lista." };
+      }
+
+      // Cria relação
+      await prisma.vipFriend.create({
+        data: {
+          friendId,
+          guildId: GUILD_ID,
+          ownerId: vipId,
+        },
+      });
+
+      return { success: true };
+    } catch (e) {
+      // Erro P2002 no Prisma significa violação de unicidade (já existe)
+      if (e.code === "P2002")
+        return { success: false, msg: "Erro: Usuário já adicionado." };
+      console.error("[DB ERROR] addFriend:", e);
+      return { success: false, msg: "Erro de banco de dados." };
+    }
+  },
+
+  removeFriend: async (vipId, friendId) => {
+    try {
+      // Tenta deletar a relação específica
+      // Como não temos um ID único fácil para a relação no delete, usamos deleteMany com filtros
+      const result = await prisma.vipFriend.deleteMany({
+        where: {
+          ownerId: vipId,
+          friendId: friendId,
+          guildId: GUILD_ID,
+        },
+      });
+
+      if (result.count === 0) {
+        return { success: false, msg: "Este usuário não está na sua lista." };
+      }
+
+      return { success: true };
+    } catch (e) {
+      console.error("[DB ERROR] removeFriend:", e);
+      return { success: false, msg: "Erro ao remover." };
+    }
   },
 };

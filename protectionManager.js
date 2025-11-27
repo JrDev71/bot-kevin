@@ -1,74 +1,89 @@
 // protectionManager.js
-const fs = require("fs");
-const path = require("path");
-
-const DATA_FILE = path.resolve(__dirname, "protectionData.json");
-
-// Estrutura inicial
-// { panela: ["ID1", "ID2"], blacklist: ["ID3", "ID4"] }
-
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    return { panela: [], blacklist: [] };
-  }
-  try {
-    const data = fs.readFileSync(DATA_FILE, "utf-8");
-    return JSON.parse(data);
-  } catch (e) {
-    console.error("Erro ao ler protectionData.json:", e);
-    return { panela: [], blacklist: [] };
-  }
-}
-
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
-}
+const prisma = require("./database");
 
 module.exports = {
   // --- PANELA (Anti-ban) ---
-  addToPanela: (userId) => {
-    const data = loadData();
-    if (data.panela.includes(userId)) return false;
-    data.panela.push(userId);
-    saveData(data);
-    return true;
+
+  addToPanela: async (userId) => {
+    try {
+      // Tenta criar. Se já existir, o Prisma lança erro P2002
+      await prisma.panela.create({ data: { userId } });
+      return true;
+    } catch (e) {
+      // Código P2002 = Unique constraint failed (Já existe)
+      if (e.code !== "P2002") console.error("Erro DB Panela Add:", e);
+      return false;
+    }
   },
-  removeFromPanela: (userId) => {
-    const data = loadData();
-    const index = data.panela.indexOf(userId);
-    if (index === -1) return false;
-    data.panela.splice(index, 1);
-    saveData(data);
-    return true;
+
+  removeFromPanela: async (userId) => {
+    try {
+      await prisma.panela.delete({ where: { userId } });
+      return true;
+    } catch (e) {
+      // Código P2025 = Record to delete does not exist
+      if (e.code !== "P2025") console.error("Erro DB Panela Rem:", e);
+      return false;
+    }
   },
-  isPanela: (userId) => {
-    const data = loadData();
-    return data.panela.includes(userId);
+
+  isPanela: async (userId) => {
+    try {
+      const user = await prisma.panela.findUnique({ where: { userId } });
+      return !!user; // Retorna true se achou, false se null
+    } catch (e) {
+      console.error("Erro DB isPanela:", e);
+      return false; // Na dúvida, não protege (ou protege, dependendo da sua política)
+    }
   },
 
   // --- BLACKLIST ---
-  addToBlacklist: (userId) => {
-    const data = loadData();
-    if (data.blacklist.includes(userId)) return false;
-    data.blacklist.push(userId);
-    saveData(data);
-    return true;
-  },
-  removeFromBlacklist: (userId) => {
-    const data = loadData();
-    const index = data.blacklist.indexOf(userId);
-    if (index === -1) return false;
-    data.blacklist.splice(index, 1);
-    saveData(data);
-    return true;
-  },
-  isBlacklisted: (userId) => {
-    const data = loadData();
-    return data.blacklist.includes(userId);
+
+  addToBlacklist: async (userId) => {
+    try {
+      await prisma.blacklist.create({ data: { userId } });
+      return true;
+    } catch (e) {
+      if (e.code !== "P2002") console.error("Erro DB Blacklist Add:", e);
+      return false;
+    }
   },
 
-  getList: (type) => {
-    const data = loadData();
-    return data[type] || [];
+  removeFromBlacklist: async (userId) => {
+    try {
+      await prisma.blacklist.delete({ where: { userId } });
+      return true;
+    } catch (e) {
+      if (e.code !== "P2025") console.error("Erro DB Blacklist Rem:", e);
+      return false;
+    }
+  },
+
+  isBlacklisted: async (userId) => {
+    try {
+      const user = await prisma.blacklist.findUnique({ where: { userId } });
+      return !!user;
+    } catch (e) {
+      console.error("Erro DB isBlacklisted:", e);
+      return false;
+    }
+  },
+
+  // --- LISTAR (Retorna array de IDs) ---
+  getList: async (type) => {
+    try {
+      if (type === "panela") {
+        const list = await prisma.panela.findMany();
+        return list.map((item) => item.userId);
+      }
+      if (type === "blacklist") {
+        const list = await prisma.blacklist.findMany();
+        return list.map((item) => item.userId);
+      }
+      return [];
+    } catch (e) {
+      console.error("Erro DB getList:", e);
+      return [];
+    }
   },
 };

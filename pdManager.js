@@ -1,12 +1,8 @@
 // pdManager.js
-const fs = require("fs");
-const path = require("path");
 const { EmbedBuilder } = require("discord.js");
-const logEmbed = require("./utils/logEmbed"); // Importa o sistema de logs
+const logEmbed = require("./utils/logEmbed");
+const prisma = require("./database"); // Conexão com o Banco
 
-// Caminho para o arquivo de banco de dados JSON
-const PD_FILE = path.resolve(__dirname, "pdData.json");
-// MAX_PDS_PER_STAFF mantido para lógica interna, mas pode ser ignorado se desejar ilimitado
 const MAX_PDS_PER_STAFF = 2;
 const PREFIX = "k!";
 
@@ -28,92 +24,91 @@ const createFeedbackEmbed = (title, description, color = 0xff0000) => {
     .setTimestamp();
 };
 
-// --- Funções Auxiliares de Persistência ---
+// --- Funções de Gerenciamento de Dados (AGORA COM PRISMA) ---
 
-function loadPdData() {
-  if (!fs.existsSync(PD_FILE)) {
-    return { pds: [], staffCount: {} };
-  }
+/**
+ * Retorna a lista de todas as PDs do banco.
+ */
+async function getPdData() {
   try {
-    const data = fs.readFileSync(PD_FILE, "utf-8");
-    return JSON.parse(data);
+    const pds = await prisma.pd.findMany();
+    return { pds };
   } catch (e) {
-    console.error("Erro ao ler pdData.json:", e);
-    return { pds: [], staffCount: {} };
+    console.error("[DB ERROR] getPdData:", e);
+    return { pds: [] };
   }
 }
 
-function savePdData(data) {
-  fs.writeFileSync(PD_FILE, JSON.stringify(data, null, 2), "utf-8");
-}
+/**
+ * Adiciona uma nova Primeira Dama (PD) no banco.
+ */
+async function addPd(pdMemberId, staffMemberId) {
+  try {
+    // 1. Checa se o membro já é PD
+    const existing = await prisma.pd.findUnique({
+      where: { memberId: pdMemberId },
+    });
+    if (existing) {
+      return { success: false, message: "Este membro já é uma Primeira Dama." };
+    }
 
-// --- Funções de Gerenciamento de Dados ---
+    // 2. Checa o limite do Staff
+    const currentCount = await prisma.pd.count({
+      where: { staffId: staffMemberId },
+    });
 
-function getPdData() {
-  return loadPdData();
-}
+    if (currentCount >= MAX_PDS_PER_STAFF) {
+      return {
+        success: false,
+        message: `Você já indicou o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas, Guloso👀.`,
+      };
+    }
 
-function addPd(pdMemberId, staffMemberId) {
-  const data = loadPdData();
+    // 3. Cria no Banco
+    await prisma.pd.create({
+      data: {
+        memberId: pdMemberId,
+        staffId: staffMemberId,
+        since: new Date(),
+      },
+    });
 
-  // 1. Checa se o membro já é PD
-  if (data.pds.some((pd) => pd.memberId === pdMemberId)) {
-    return { success: false, message: "Este membro já é uma Primeira Dama." };
+    return { success: true, message: "Primeira Dama adicionada com sucesso." };
+  } catch (e) {
+    console.error("[DB ERROR] addPd:", e);
+    return { success: false, message: "Erro no banco de dados." };
   }
-
-  // 2. Checa o limite do Staff
-  const currentCount = data.staffCount[staffMemberId] || 0;
-  if (currentCount >= MAX_PDS_PER_STAFF) {
-    return {
-      success: false,
-      message: `Você já indicou o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas.`,
-    };
-  }
-
-  // 3. Adiciona a nova PD
-  data.pds.push({
-    memberId: pdMemberId,
-    staffId: staffMemberId,
-    since: Date.now(),
-  });
-
-  // 4. Atualiza a contagem do Staff
-  data.staffCount[staffMemberId] = currentCount + 1;
-
-  savePdData(data);
-  return { success: true, message: "Primeira Dama adicionada com sucesso." };
 }
 
-function removePd(memberIdToRemove) {
-  const data = loadPdData();
+/**
+ * Remove uma PD do banco pelo ID do membro.
+ */
+async function removePd(memberIdToRemove) {
+  try {
+    const pdToRemove = await prisma.pd.findUnique({
+      where: { memberId: memberIdToRemove },
+    });
 
-  const index = data.pds.findIndex((pd) => pd.memberId === memberIdToRemove);
-  if (index === -1) {
+    if (!pdToRemove) {
+      return { success: false, pdToRemove: null };
+    }
+
+    await prisma.pd.delete({
+      where: { memberId: memberIdToRemove },
+    });
+
+    return { success: true, pdToRemove };
+  } catch (e) {
+    console.error("[DB ERROR] removePd:", e);
     return { success: false, pdToRemove: null };
   }
-
-  const pdToRemove = data.pds[index];
-
-  // 1. Remove a PD da lista
-  data.pds.splice(index, 1);
-
-  // 2. Atualiza a contagem do Staff
-  const staffId = pdToRemove.staffId;
-  if (data.staffCount[staffId] > 0) {
-    data.staffCount[staffId] -= 1;
-    if (data.staffCount[staffId] === 0) {
-      delete data.staffCount[staffId];
-    }
-  }
-
-  savePdData(data);
-  return { success: true, pdToRemove: pdToRemove };
 }
 
 // --- ROTEADOR E HANDLER DE COMANDOS PD ---
 
 async function handlePDCommand(message, command, args) {
-  const pdData = getPdData();
+  // Agora precisamos esperar a promessa do banco
+  const pdData = await getPdData();
   const client = message.client;
   const authorTag = message.author.tag;
 
@@ -126,7 +121,7 @@ async function handlePDCommand(message, command, args) {
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "👑 Primeiras Damas",
+            "<:designcoroa:1443638142430085140> Primeiras Damas",
             "Atualmente, não há nenhuma Primeira Dama definida.",
             0x00bfff
           ),
@@ -135,7 +130,9 @@ async function handlePDCommand(message, command, args) {
     }
 
     const pdEmbed = new EmbedBuilder()
-      .setTitle(`👑 Primeiras Damas Atuais do Servidor`)
+      .setTitle(
+        `<:designcoroa:1443638142430085140> Primeiras Damas Atuais do Servidor`
+      )
       .setColor(0xffa500);
 
     for (const [index, pd] of pdData.pds.entries()) {
@@ -145,13 +142,14 @@ async function handlePDCommand(message, command, args) {
       const staffUser = await client.users.fetch(pd.staffId).catch(() => null);
 
       const staffTag = staffUser ? staffUser.tag : "Staff Desconhecido";
+      // Converte Date do banco para string legível
       const sinceDate = new Date(pd.since).toLocaleDateString("pt-BR");
 
       if (pdMember) {
         const pdName = pdMember.displayName;
 
         pdEmbed.addFields({
-          name: `👸 #${index + 1}: ${pdName}`,
+          name: `<:dama:1443641517410488514> #${index + 1}: ${pdName}`,
           value: `**Indicada por:** ${staffTag}\n**Desde:** ${sinceDate}`,
           inline: true,
         });
@@ -163,7 +161,7 @@ async function handlePDCommand(message, command, args) {
         }
       } else {
         pdEmbed.addFields({
-          name: `❌ PD Antiga (Membro saiu)`,
+          name: `<:Nao:1443642030637977743> PD Antiga (Membro saiu)`,
           value: `ID: ${pd.memberId} (Indicada por: ${staffTag})`,
           inline: true,
         });
@@ -171,7 +169,6 @@ async function handlePDCommand(message, command, args) {
     }
 
     await message.channel.send({ embeds: [pdEmbed] });
-    // REMOVIDO: message.delete(). O messageCreate.js já faz isso.
     return;
   }
 
@@ -185,7 +182,7 @@ async function handlePDCommand(message, command, args) {
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "🔒 Sem Permissão",
+            "<:cadeado:1443642375833518194> Sem Permissão",
             `Você não tem permissão para definir a Primeira Dama.`
           ),
         ],
@@ -219,69 +216,79 @@ async function handlePDCommand(message, command, args) {
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
     if (!pdRole) {
-      console.error("Erro: Cargo PD_ROLE_ID não encontrado.");
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "🔥 Erro Crítico",
+            "<:fogo:1443642901866217586> Erro Crítico",
             "O cargo de Primeira Dama não está configurado corretamente. Verifique o PD_ROLE_ID."
           ),
         ],
       });
     }
 
-    const { success, message: managerMessage } = addPd(
+    // ADICIONA AO BANCO (ASYNC)
+    const { success, message: managerMessage } = await addPd(
       newPdMember.id,
       message.author.id
     );
 
     if (!success) {
       return message.channel.send({
-        embeds: [createFeedbackEmbed("❌ Limite Atingido", managerMessage)],
+        embeds: [
+          createFeedbackEmbed(
+            "<:Nao:1443642030637977743> Ação Bloqueada",
+            managerMessage
+          ),
+        ],
       });
     }
 
     try {
       await newPdMember.roles.add(pdRole);
 
-      const remaining =
-        MAX_PDS_PER_STAFF - (getPdData().staffCount[message.author.id] || 0);
+      // Conta no banco quantas esse staff tem agora
+      const count = await prisma.pd.count({
+        where: { staffId: message.author.id },
+      });
+      const remaining = MAX_PDS_PER_STAFF - count;
 
       const successEmbed = createFeedbackEmbed(
-        "✅ Sucesso!",
-        `A Staff **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
+        "<:certo_froid:1443643346722754692> Sucesso!",
+        `O Dono **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
           `Você ainda pode indicar mais **${remaining}** PDs.`,
         0x00ff00
       );
 
       await message.channel.send({ embeds: [successEmbed] });
 
-      // --- LOG ---
       await logEmbed(
         client,
         logChannelId,
-        "👑 Nova Primeira Dama Definida",
+        "<:designcoroa:1443638142430085140> Nova Primeira Dama Definida",
         `**${newPdMember.user.tag}** foi promovida a Primeira Dama.`,
         0xf1c40f,
         [
-          { name: "👸 PD", value: `<@${newPdMember.id}>`, inline: true },
           {
-            name: "👮 Indicada por",
+            name: "<:dama:1443641517410488514> PD",
+            value: `<@${newPdMember.id}>`,
+            inline: true,
+          },
+          {
+            name: "<:nikeboy:1443644536537481267> Indicada por",
             value: `<@${message.author.id}>`,
             inline: true,
           },
-          { name: "🔢 Vagas Restantes", value: `${remaining}`, inline: true },
         ],
         newPdMember.user.displayAvatarURL()
       );
     } catch (error) {
       console.error("Erro ao adicionar cargo de PD:", error);
-      removePd(newPdMember.id);
+      await removePd(newPdMember.id); // Reverte DB se falhar no Discord
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "❌ Erro de Permissão",
-            "Não foi possível adicionar o cargo PD. Verifique se o cargo do bot está acima do cargo de Primeira Dama."
+            "<:Nao:1443642030637977743> Erro de Permissão",
+            "Não foi possível adicionar o cargo PD. Verifique a hierarquia do bot."
           ),
         ],
       });
@@ -299,7 +306,7 @@ async function handlePDCommand(message, command, args) {
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "🔒 Sem Permissão",
+            "<:cadeado:1443642375833518194> Sem Permissão",
             `Você não tem permissão para remover a Primeira Dama.`
           ),
         ],
@@ -329,103 +336,91 @@ async function handlePDCommand(message, command, args) {
       });
     }
 
+    // REMOVE DO BANCO (ASYNC)
+    // Primeiro tentamos remover do banco. Se não estava lá, avisamos.
+    const { success, pdToRemove } = await removePd(targetMember.id);
+
     const pdRoleId = PD_ROLE_ID;
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
-    if (!targetMember.roles.cache.has(pdRoleId)) {
-      const { success } = removePd(targetMember.id);
-      if (success) {
+    // Se o membro tem o cargo no Discord, tentamos tirar de qualquer jeito
+    if (targetMember.roles.cache.has(pdRoleId)) {
+      try {
+        await targetMember.roles.remove(pdRole);
+      } catch (e) {
         return message.channel.send({
           embeds: [
             createFeedbackEmbed(
-              "✅ Sucesso",
-              `Membro sem o cargo PD, mas o registro foi limpo do sistema.`,
-              0x00ff00
-            ),
-          ],
-        });
-      } else {
-        return message.channel.send({
-          embeds: [
-            createFeedbackEmbed(
-              "❌ Não Registrado",
-              `O membro ${targetMember.user.tag} não está registrado no sistema PD.`
+              "<:Nao:1443642030637977743> Erro de Permissão",
+              "Não consegui remover o cargo no Discord. Verifique a hierarquia."
             ),
           ],
         });
       }
     }
 
-    const { success, pdToRemove } = removePd(targetMember.id);
-
     if (!success) {
-      return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "❌ Erro",
-            "Este membro está com o cargo, mas não está listado como uma Primeira Dama no sistema."
-          ),
-        ],
-      });
+      // Se não estava no banco e não tinha cargo (ou só tinha cargo), avisamos baseado no cargo
+      if (!targetMember.roles.cache.has(pdRoleId)) {
+        return message.channel.send({
+          embeds: [
+            createFeedbackEmbed(
+              "<:Nao:1443642030637977743> Não Registrado",
+              `O membro ${targetMember.user.tag} não está registrado no sistema PD.`
+            ),
+          ],
+        });
+      } else {
+        // Tinha cargo mas não estava no banco (Inconsistência resolvida acima)
+        return message.channel.send({
+          embeds: [
+            createFeedbackEmbed(
+              "<:am_avisoK:1443645307358544124> Aviso",
+              `O membro tinha o cargo (removido agora), mas não estava no banco de dados.`
+            ),
+          ],
+        });
+      }
     }
 
-    try {
-      await targetMember.roles.remove(pdRole);
+    const staffTag = pdToRemove?.staffId
+      ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
+      : "Dono Desconhecido";
 
-      const staffTag = pdToRemove.staffId
-        ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
-        : "Staff Desconhecido";
-      const logMessage = pdToRemove
-        ? `(Indicada por: ${staffTag}, desde: ${new Date(
-            pdToRemove.since
-          ).toLocaleDateString("pt-BR")})`
-        : "";
+    const removalEmbed = createFeedbackEmbed(
+      "<:red_corao_partido:1443645777858662521> PD Removida",
+      `${targetMember.user.tag} foi removido(a) como Primeira Dama por **${authorTag}**.`,
+      0xdc7633
+    );
 
-      const removalEmbed = createFeedbackEmbed(
-        "💔 PD Removida",
-        `${targetMember.user.tag} foi removido(a) como Primeira Dama por **${authorTag}**.\n\n${logMessage}`,
-        0xdc7633
-      );
+    await message.channel.send({ embeds: [removalEmbed] });
 
-      await message.channel.send({ embeds: [removalEmbed] });
-
-      // --- LOG ---
-      await logEmbed(
-        client,
-        logChannelId,
-        "💔 Primeira Dama Removida",
-        `**${targetMember.user.tag}** perdeu o status de Primeira Dama.`,
-        0xe74c3c,
-        [
-          { name: "👸 Ex-PD", value: `<@${targetMember.id}>`, inline: true },
-          {
-            name: "👮 Removido por",
-            value: `<@${message.author.id}>`,
-            inline: true,
-          },
-          {
-            name: "📜 Indicada Originalmente por",
-            value: staffTag,
-            inline: true,
-          },
-        ],
-        targetMember.user.displayAvatarURL()
-      );
-    } catch (error) {
-      console.error("Erro ao remover cargo de PD:", error);
-      return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "❌ Erro de Permissão",
-            "Não foi possível remover o cargo PD. Verifique as permissões do bot."
-          ),
-        ],
-      });
-    }
+    await logEmbed(
+      client,
+      logChannelId,
+      "<:red_corao_partido:1443645777858662521> Primeira Dama Removida",
+      `**${targetMember.user.tag}** perdeu o status de Primeira Dama.`,
+      0xe74c3c,
+      [
+        {
+          name: "<:dama:1443641517410488514> Ex-PD",
+          value: `<@${targetMember.id}>`,
+          inline: true,
+        },
+        {
+          name: "<:nikeboy:1443644536537481267> Removido por",
+          value: `<@${message.author.id}>`,
+          inline: true,
+        },
+        { name: "📜 Indicada por", value: staffTag, inline: true },
+      ],
+      targetMember.user.displayAvatarURL()
+    );
     return;
   }
 }
 
+// Exporta também as funções para uso externo se necessário (ex: handlers)
 module.exports = {
   handlePDCommand,
   getPdData,

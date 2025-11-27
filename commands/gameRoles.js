@@ -27,11 +27,11 @@ module.exports = {
       .setTitle("<:controle:1443678488870785044> Selecione seus Jogos")
       .setDescription(
         "Clique nos botões abaixo para adicionar ou remover as tags de jogo no seu perfil.\n" +
-          "Isso liberará canais e notificações específicas para cada game."
+          "\nIsso liberará canais e notificações específicas para cada game."
       )
       .setColor(COLOR_NEUTRAL)
       .setImage(HEADER_IMAGE)
-      .setFooter({ text: "Sistema de Auto-Role" });
+      .setFooter({ text: "Sistema auto-role" });
 
     // Linha 1: FPS / Tiro
     const row1 = new ActionRowBuilder().addComponents(

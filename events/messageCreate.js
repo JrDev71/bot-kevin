@@ -1,23 +1,18 @@
 // events/messageCreate.js
-const {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 
-// --- IMPORTAÇÕES DOS SISTEMAS ---
+// --- IMPORTAÇÕES DOS SISTEMAS DE JOGO E ESTADO ---
 const { getGameState } = require("../game/gameState");
+const { calculateScores, postReviewEmbed } = require("../game/scoreSystem");
 const { startRound } = require("../game/gameManager");
-const { postReviewEmbed } = require("../game/scoreSystem");
 const { handlePDCommand } = require("../pdManager");
 
-// --- HANDLERS DE SEGURANÇA ---
+// --- IMPORTAÇÕES DE HANDLERS (SEGURANÇA) ---
 const handleMention = require("../handlers/mentionHandler");
 const handleAntiSpam = require("../handlers/antiSpamHandler");
 const handleChatProtection = require("../handlers/chatProtectionHandler");
 
-// --- COMANDOS (MODULARIZADOS) ---
+// --- IMPORTAÇÕES DOS COMANDOS (Módulos externos) ---
 const { handleAvatar } = require("../commands/avatar");
 const { handleRepeat } = require("../commands/repeat");
 const { handleVipCommands } = require("../commands/vip");
@@ -41,45 +36,55 @@ const { handleBotInfo } = require("../commands/botinfo");
 const { handleListMembers } = require("../commands/listMembers");
 
 // --- PAINÉIS DE GESTÃO ---
-const { sendRolePanel } = require("../commands/rolePanel");
-const { handleChannelPanel } = require("../commands/channelPanel");
-const { handleModPanel } = require("../commands/modPanel");
+const { sendRolePanel } = require("../commands/rolePanel"); // Painel Admin de Cargos
+const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de Infra
+const { handleModPanel } = require("../commands/modPanel"); // Painel de Moderação
+const { sendGameRolesPanel } = require("../commands/gameRoles"); // NOVO: Painel de Jogos (Auto-Role)
 
 const PREFIX = "k!";
 
-// Configuração Visual
-const HEADER_IMAGE =
-  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
-const COLOR_NEUTRAL = 0x2f3136;
-
 // Helper Visual
-const createFeedbackEmbed = (title, description) => {
+const createFeedbackEmbed = (title, description, color = 0xff0000) => {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .setColor(COLOR_NEUTRAL)
+    .setColor(color)
     .setTimestamp();
 };
 
+// --- INÍCIO DO MÓDULO ---
 module.exports = async (message) => {
   if (message.author.bot) return;
 
-  // 1. SEGURANÇA
+  // ====================================================
+  // 1. CAMADA DE SEGURANÇA (Prioridade Máxima)
+  // ====================================================
+
+  // A. Proteção de Chat (Anti-Everyone, Anti-Link)
   if (await handleChatProtection(message)) return;
+
+  // B. Anti-Spam
   if (await handleAntiSpam(message)) return;
 
-  // 2. JOGO STOP (RESPOSTA RÁPIDA) E MENÇÃO
+  // ====================================================
+  // 2. LÓGICA DE JOGO E MENÇÃO
+  // ====================================================
+
+  // Obtém o estado do jogo
   const state = getGameState(message.guild.id);
-  const userId = message.author.id;
+  const userId = message.author.id; // A. Resposta a Menção
 
   if (await handleMention(message)) return;
 
+  // B. Resposta Rápida (STOP GAME)
   if (!message.content.startsWith(PREFIX)) {
     if (state.isActive) {
       const currentLetter = state.currentLetter;
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
+
+      // Verifica se começa com a letra e tem vírgulas (indício de resposta múltipla)
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -97,7 +102,8 @@ module.exports = async (message) => {
                 embeds: [
                   createFeedbackEmbed(
                     "<:Nao:1443642030637977743> Resposta Inválida",
-                    `Todas as respostas devem começar com a letra **${currentLetter}**!`
+                    `Todas as respostas devem começar com a letra **${currentLetter}**!`,
+                    0x00bfff
                   ),
                 ],
               })
@@ -108,7 +114,7 @@ module.exports = async (message) => {
             isStopped: true,
             score: 0,
           };
-          await message.react("<:certo_froid:1443643346722754692>");
+          await message.react("✅");
           if (message.deletable)
             try {
               await message.delete();
@@ -120,7 +126,7 @@ module.exports = async (message) => {
     return;
   }
 
-  // 3. EXCLUSÃO DE COMANDO
+  // 3. EXCLUSÃO CENTRALIZADA DE COMANDOS
   if (message.deletable) {
     try {
       await message.delete();
@@ -131,12 +137,12 @@ module.exports = async (message) => {
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  // ==========================
-  // ROTEAMENTO DE COMANDOS
-  // ==========================
+  // ====================================================
+  // 3. ROTEAMENTO DE COMANDOS
+  // ====================================================
 
   // --- PAINÉIS GERAIS DE ADMINISTRAÇÃO ---
-  if (["cargo", "cargosadmin"].includes(command)) return sendRolePanel(message); // Painel de criar/deletar cargos
+  if (["cargo", "cargosadmin"].includes(command)) return sendRolePanel(message); // Gestão de Cargos (Admin)
   if (["canal", "canais", "infra"].includes(command))
     return handleChannelPanel(message);
   if (["mod", "punir", "justice"].includes(command))
@@ -184,86 +190,10 @@ module.exports = async (message) => {
   if (command === "av") return handleAvatar(message, args);
   if (command === "repeat") return handleRepeat(message, args);
   if (["membros", "listmembers", "list"].includes(command))
-    return handleListMembers(message, args); // --- PAINEL DE CARGOS (AUTO-ROLE / JOGOS) - ATUALIZADO ---
+    return handleListMembers(message, args); // --- PAINEL DE JOGOS (AUTO-ROLE) ---
 
-  if (command === "roles" || command === "cargos") {
-    // 'cargos' agora aponta para o auto-role, use 'cargosadmin' para gestão
-    if (!message.member.permissions.has("MANAGE_GUILD")) {
-      return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "<:cadeado:1443642375833518194> Sem Permissão",
-            `Requer **Gerenciar Servidor**.`
-          ),
-        ],
-      });
-    }
-
-    const rolePanelEmbed = new EmbedBuilder()
-      .setTitle("<:controle:1443678488870785044> Selecione seus Jogos")
-      .setDescription(
-        "Clique nos botões abaixo para adicionar ou remover as tags de jogo no seu perfil.\n" +
-          "Isso liberará canais e notificações específicas para cada game."
-      )
-      .setColor(COLOR_NEUTRAL)
-      .setImage(HEADER_IMAGE)
-      .setTimestamp();
-
-    // Linha 1: FPS / Tiro
-    const row1 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("btn_role_ff")
-        .setLabel("Free Fire")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:freefire:1443689056197283982>"),
-      new ButtonBuilder()
-        .setCustomId("btn_role_val")
-        .setLabel("Valorant")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:valorant:1439457595290292344>"),
-      new ButtonBuilder()
-        .setCustomId("btn_role_cs")
-        .setLabel("CS:GO/2")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:cs2:1443689897998422087>")
-    );
-
-    // Linha 2: Outros
-    const row2 = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("btn_role_gta")
-        .setLabel("GTA V")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:fiveM:1443690654612848690>"),
-      new ButtonBuilder()
-        .setCustomId("btn_role_roblox")
-        .setLabel("Roblox")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:roblox:1443691205929078876>"),
-      new ButtonBuilder()
-        .setCustomId("btn_role_mine")
-        .setLabel("Minecraft")
-        .setStyle(ButtonStyle.Secondary)
-        .setEmoji("<:minecraft:1443692753958600898>")
-    );
-
-    try {
-      const sentMessage = await message.channel.send({
-        embeds: [rolePanelEmbed],
-        components: [row1, row2],
-      });
-      // Não precisamos mais de reações aqui
-    } catch (error) {
-      console.error("Erro Roles:", error);
-      return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "<:Nao:1443642030637977743> Erro",
-            "Falha ao postar painel."
-          ),
-        ],
-      });
-    }
+  if (["roles", "cargos", "jogos"].includes(command)) {
+    return sendGameRolesPanel(message);
   } // --- JOGO STOP ---
 
   if (command === "stop") {
@@ -293,10 +223,7 @@ module.exports = async (message) => {
     state.isActive = false;
     await message.channel.send({
       embeds: [
-        createFeedbackEmbed(
-          "<:certo_froid:1443643346722754692> STOP!",
-          "Rodada encerrada manualmente."
-        ),
+        createFeedbackEmbed("✅ STOP!", "Rodada encerrada manualmente."),
       ],
     });
     await postReviewEmbed(state, message.channel);

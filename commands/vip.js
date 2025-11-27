@@ -7,7 +7,7 @@ const {
   ButtonStyle,
 } = require("discord.js");
 
-// Importa as funções de banco de dados
+// Importa as funções do gerenciador (Agora assíncronas via Prisma)
 const {
   addVip,
   removeVip,
@@ -20,26 +20,24 @@ const {
 
 const PREFIX = "k!";
 
-// IDs dos Botões
+// IDs dos Botões (Exportados para o interactionCreate)
 const BTN_TAG = "vip_manage_tag";
 const BTN_CHANNEL = "vip_manage_channel";
 const BTN_ADD_MEMBER = "vip_add_member_role";
 
-// CONFIG VISUAL
+// CONFIGURAÇÃO VISUAL
 const HEADER_IMAGE =
-  "https://i.pinimg.com/736x/4d/68/8e/4d688edfeedd4bec17b856d2a2ad7241.jpg";
-const NEUTRAL_COLOR = 0x2f3136;
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
 
-// --- CONFIGURAÇÃO DE PERMISSÕES ---
-// Coloque aqui os IDs dos cargos que podem usar setvip, vipadm, addtime
-const VIP_MANAGER_ROLES = ["1435040516814147715", "1435040519918059521"];
+// Permissões de Gerente VIP (Além de Admin)
+const VIP_MANAGER_ROLES = [
+  "1435040516814147715",
+  // "ID_DO_CARGO_GERENTE"
+];
 
-/**
- * Função auxiliar para verificar permissão de Gerente VIP
- */
 function isVipManager(member) {
   const managers = process.env.STAFF_TRUSTED_ROLES?.split(",") || [];
-  // Permite se for Administrador OU se tiver um dos cargos na lista VIP_MANAGER_ROLES ou STAFF_TRUSTED_ROLES
   return (
     member.permissions.has(PermissionsBitField.Flags.Administrator) ||
     member.roles.cache.some(
@@ -48,6 +46,16 @@ function isVipManager(member) {
     )
   );
 }
+
+// Helper Visual
+const createEmbed = (title, description, color = COLOR_NEUTRAL) => {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(color)
+    .setImage(HEADER_IMAGE)
+    .setTimestamp();
+};
 
 module.exports = {
   BTN_TAG,
@@ -61,17 +69,16 @@ module.exports = {
 
     // --- 1. COMANDO k!vip (PAINEL DO USUÁRIO) ---
     if (command === "vip") {
-      // AGORA USA AWAIT
+      // AWAIT OBRIGATÓRIO (Banco de Dados)
       const userData = await getVipData(message.author.id);
 
       if (!userData) {
         return message.channel.send({
           embeds: [
-            new EmbedBuilder()
-              .setTitle("<:vd_diamanteK:1443648289068285972> Status VIP")
-              .setDescription("Você não possui um plano VIP ativo.")
-              .setColor(NEUTRAL_COLOR)
-              .setImage(HEADER_IMAGE),
+            createEmbed(
+              "<:vd_diamanteK:1443648289068285972> Status VIP",
+              "Você não possui um plano VIP ativo."
+            ),
           ],
         });
       }
@@ -82,9 +89,9 @@ module.exports = {
       const friendCount = userData.friends ? userData.friends.length : 0;
 
       const embed = new EmbedBuilder()
-        .setTitle(`Painel de Controle VIP`)
+        .setTitle(`<:vd_diamanteK:1443648289068285972> Painel de Controle VIP`)
         .setDescription(`Gerencie seus benefícios exclusivos abaixo.`)
-        .setColor(NEUTRAL_COLOR)
+        .setColor(COLOR_NEUTRAL)
         .setImage(HEADER_IMAGE)
         .addFields(
           {
@@ -135,22 +142,18 @@ module.exports = {
       return message.channel.send({ embeds: [embed], components: [row] });
     }
 
-    // --- 2. COMANDO k!setvip (ADMIN: ADICIONAR VIP DIRETO) ---
+    // --- 2. k!setvip @user [dias] (ADMIN) ---
     if (command === "setvip") {
-      if (!isVipManager(message.member)) {
-        return message.reply(
-          "<:cadeado:1443642375833518194> Apenas a equipe autorizada pode dar VIP."
-        );
-      }
+      if (!isVipManager(message.member))
+        return message.reply("<:cadeado:1443642375833518194> Sem permissão.");
 
+      const days = args[1] ? parseInt(args[1]) : 30;
       if (!firstArgTarget)
         return message.reply(
           `<:Nao:1443642030637977743> Uso: \`${PREFIX}setvip @usuario [dias]\``
         );
 
-      const days = args[1] ? parseInt(args[1]) : 30; // Padrão 30 dias
-
-      // AGORA USA AWAIT
+      // AWAIT
       if (await addVip(firstArgTarget, days)) {
         const targetMember = await message.guild.members
           .fetch(firstArgTarget)
@@ -165,13 +168,13 @@ module.exports = {
 
         return message.channel.send({
           embeds: [
-            new EmbedBuilder()
-              .setDescription(
-                `<:certo_froid:1443643346722754692> **${
-                  targetMember ? targetMember.user.tag : firstArgTarget
-                }** agora é VIP por **${days} dias**!`
-              )
-              .setColor(NEUTRAL_COLOR),
+            createEmbed(
+              "<:certo_froid:1443643346722754692> Sucesso",
+              `**${
+                targetMember ? targetMember.user.tag : firstArgTarget
+              }** agora é VIP por **${days} dias**!`,
+              0x00ff00
+            ),
           ],
         });
       }
@@ -180,13 +183,10 @@ module.exports = {
       );
     }
 
-    // --- 3. COMANDO k!addtime (ADMIN: RENOVAR) ---
+    // --- 3. k!addtime @user <dias> (RENOVAR) ---
     if (command === "addtime" || command === "renovar") {
-      if (!isVipManager(message.member)) {
-        return message.reply(
-          "<:cadeado:1443642375833518194> Apenas a equipe autorizada pode renovar VIP."
-        );
-      }
+      if (!isVipManager(message.member))
+        return message.reply("<:cadeado:1443642375833518194> Sem permissão.");
 
       const days = parseInt(args[1]);
       if (!firstArgTarget || !days)
@@ -194,72 +194,67 @@ module.exports = {
           `<:Nao:1443642030637977743> Uso: \`${PREFIX}addtime @usuario <dias>\``
         );
 
-      // AGORA USA AWAIT
+      // AWAIT
       const newExpire = await addVipTime(firstArgTarget, days);
       if (!newExpire)
-        return message.reply(
-          "<:Nao:1443642030637977743> Este usuário não é VIP."
-        );
+        return message.reply("<:Nao:1443642030637977743> Usuário não é VIP.");
 
       return message.channel.send({
         embeds: [
-          new EmbedBuilder()
-            .setDescription(
-              `<:certo_froid:1443643346722754692> Tempo adicionado! Novo vencimento: <t:${Math.floor(
-                newExpire / 1000
-              )}:F>`
-            )
-            .setColor(NEUTRAL_COLOR),
+          createEmbed(
+            "<:certo_froid:1443643346722754692> Renovado",
+            `Tempo adicionado! Novo vencimento: <t:${Math.floor(
+              newExpire / 1000
+            )}:F>`,
+            0x00ff00
+          ),
         ],
       });
     }
 
-    // --- 4. COMANDO k!vipadm (GERENCIAR / REMOVER) ---
-    if (command === "vipadm") {
+    // --- 4. k!vipadm rem (ADMIN REMOVE) ---
+    if (command === "vipadm" && subCommand === "rem") {
       if (!isVipManager(message.member))
-        return message.reply("<:cadeado:1443642375833518194> Apenas Admins.");
+        return message.reply("<:cadeado:1443642375833518194> Sem permissão.");
 
-      if (subCommand === "rem" && targetId) {
-        // AGORA USA AWAIT
-        const result = await removeVip(targetId);
+      // AWAIT
+      const result = await removeVip(targetId);
 
-        if (result.success) {
-          const tm = await message.guild.members
-            .fetch(targetId)
-            .catch(() => null);
-          const vr = message.guild.roles.cache.get(process.env.VIP_ROLE_ID);
-          if (tm && vr) await tm.roles.remove(vr);
+      if (result.success) {
+        const tm = await message.guild.members
+          .fetch(targetId)
+          .catch(() => null);
+        const vr = message.guild.roles.cache.get(process.env.VIP_ROLE_ID);
+        if (tm && vr) await tm.roles.remove(vr);
 
-          if (result.customRoleId) {
-            const cr = message.guild.roles.cache.get(result.customRoleId);
-            if (cr) await cr.delete("VIP Removido").catch(() => {});
-          }
-          if (result.customChannelId) {
-            const cc = message.guild.channels.cache.get(result.customChannelId);
-            if (cc) await cc.delete("VIP Removido").catch(() => {});
-          }
-          return message.channel.send({
-            embeds: [
-              new EmbedBuilder()
-                .setDescription(
-                  `<:vmc_lixeiraK:1443653159779041362> VIP removido e benefícios limpos.`
-                )
-                .setColor(NEUTRAL_COLOR),
-            ],
-          });
+        // Limpeza de Tag e Canal
+        if (result.customRoleId) {
+          const cr = message.guild.roles.cache.get(result.customRoleId);
+          if (cr) await cr.delete("VIP Removido").catch(() => {});
         }
-        return message.channel.send(
-          "<:am_avisoK:1443645307358544124> Usuário não era VIP."
-        );
+        if (result.customChannelId) {
+          const cc = message.guild.channels.cache.get(result.customChannelId);
+          if (cc) await cc.delete("VIP Removido").catch(() => {});
+        }
+        return message.channel.send({
+          embeds: [
+            createEmbed(
+              "<:vmc_lixeiraK:1443653159779041362> VIP Removido",
+              "Benefícios e cargos deletados.",
+              COLOR_NEUTRAL
+            ),
+          ],
+        });
       }
-      return message.reply(`Uso: \`${PREFIX}vipadm rem @usuario\``);
+      return message.channel.send(
+        "<:am_avisoK:1443645307358544124> Usuário não era VIP."
+      );
     }
 
-    // --- 5. COMANDO k!addvip / k!remvip (USUÁRIO VIP: AMIGOS) ---
+    // --- 5. k!addvip / k!remvip (TEXTO) ---
     if (command === "addvip" || command === "remvip") {
-      // AGORA USA AWAIT
+      // AWAIT
       const vipData = await getVipData(message.author.id);
-
       if (!vipData)
         return message.channel.send(
           "<:vd_diamanteK:1443648289068285972> Apenas usuários VIP podem usar este comando."
@@ -277,7 +272,7 @@ module.exports = {
       const customRole = message.guild.roles.cache.get(vipData.customRoleId);
       if (!customRole)
         return message.channel.send(
-          "<:Nao:1443642030637977743> Erro: Sua tag exclusiva não foi encontrada."
+          "<:Nao:1443642030637977743> Erro: Sua tag exclusiva não foi encontrada (deletada?)."
         );
 
       const friendMember = await message.guild.members
@@ -286,17 +281,17 @@ module.exports = {
       if (!friendMember) return message.channel.send("Usuário não encontrado.");
 
       if (command === "addvip") {
-        // AGORA USA AWAIT
+        // AWAIT
         const result = await addFriend(message.author.id, friendId);
         if (result.success) {
           await friendMember.roles.add(customRole);
           return message.channel.send({
             embeds: [
-              new EmbedBuilder()
-                .setDescription(
-                  `<:certo_froid:1443643346722754692> **${friendMember.user.tag}** recebeu sua tag!`
-                )
-                .setColor(NEUTRAL_COLOR),
+              createEmbed(
+                "<:certo_froid:1443643346722754692> Amigo Adicionado",
+                `**${friendMember.user.tag}** recebeu sua tag!`,
+                0x00ff00
+              ),
             ],
           });
         } else {
@@ -307,17 +302,17 @@ module.exports = {
       }
 
       if (command === "remvip") {
-        // AGORA USA AWAIT
+        // AWAIT
         const result = await removeFriend(message.author.id, friendId);
         if (result.success) {
           await friendMember.roles.remove(customRole);
           return message.channel.send({
             embeds: [
-              new EmbedBuilder()
-                .setDescription(
-                  `<:vmc_lixeiraK:1443653159779041362> **${friendMember.user.tag}** foi removido da sua tag.`
-                )
-                .setColor(NEUTRAL_COLOR),
+              createEmbed(
+                "<:vmc_lixeiraK:1443653159779041362> Amigo Removido",
+                `**${friendMember.user.tag}** foi removido da sua tag.`,
+                COLOR_NEUTRAL
+              ),
             ],
           });
         } else {

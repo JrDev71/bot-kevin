@@ -1,19 +1,23 @@
 // events/messageCreate.js
-const { EmbedBuilder } = require("discord.js");
-const fetch = require("node-fetch");
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 
-// --- IMPORTAÇÕES DOS SISTEMAS DE JOGO E ESTADO ---
+// --- IMPORTAÇÕES DOS SISTEMAS ---
 const { getGameState } = require("../game/gameState");
-const { calculateScores, postReviewEmbed } = require("../game/scoreSystem");
 const { startRound } = require("../game/gameManager");
+const { postReviewEmbed } = require("../game/scoreSystem");
 const { handlePDCommand } = require("../pdManager");
 
-// --- IMPORTAÇÕES DE HANDLERS (SEGURANÇA) ---
+// --- HANDLERS DE SEGURANÇA ---
 const handleMention = require("../handlers/mentionHandler");
 const handleAntiSpam = require("../handlers/antiSpamHandler");
 const handleChatProtection = require("../handlers/chatProtectionHandler");
 
-// --- IMPORTAÇÕES DOS COMANDOS (Módulos externos) ---
+// --- COMANDOS (MODULARIZADOS) ---
 const { handleAvatar } = require("../commands/avatar");
 const { handleRepeat } = require("../commands/repeat");
 const { handleVipCommands } = require("../commands/vip");
@@ -34,66 +38,48 @@ const {
   handleUnlockdownAll,
 } = require("../commands/lockdown");
 const { handleBotInfo } = require("../commands/botinfo");
-const { handleListMembers } = require("../commands/listMembers"); // <--- NOVO
+const { handleListMembers } = require("../commands/listMembers");
 
-// --- NOVOS PAINÉIS VISUAIS ---
+// --- PAINÉIS DE GESTÃO ---
 const { sendRolePanel } = require("../commands/rolePanel");
 const { handleChannelPanel } = require("../commands/channelPanel");
 const { handleModPanel } = require("../commands/modPanel");
 
 const PREFIX = "k!";
 
-// Emojis para o comando Roles (Legado)
-const EMOJIS = {
-  FREEFIRE_ID: "1437889904406433974",
-  VALORANT_ID: "1437889927613517975",
-};
+// Configuração Visual
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
 
 // Helper Visual
-const createFeedbackEmbed = (title, description, color = 0xff0000) => {
+const createFeedbackEmbed = (title, description) => {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .setColor(color)
+    .setColor(COLOR_NEUTRAL)
     .setTimestamp();
 };
 
-// --- INÍCIO DO MÓDULO ---
 module.exports = async (message) => {
   if (message.author.bot) return;
 
-  // ====================================================
-  // 1. CAMADA DE SEGURANÇA (Prioridade Máxima)
-  // ====================================================
-
-  // A. Proteção de Chat (Anti-Everyone, Anti-Link)
+  // 1. SEGURANÇA
   if (await handleChatProtection(message)) return;
-
-  // B. Anti-Spam
   if (await handleAntiSpam(message)) return;
 
-  // ====================================================
-  // 2. LÓGICA DE JOGO E MENÇÃO
-  // ====================================================
-
-  // Obtém o estado do jogo
+  // 2. JOGO STOP (RESPOSTA RÁPIDA) E MENÇÃO
   const state = getGameState(message.guild.id);
-  const userId = message.author.id; // A. Resposta a Menção
+  const userId = message.author.id;
 
   if (await handleMention(message)) return;
 
-  // B. Resposta Rápida (STOP GAME)
-  // Se a mensagem NÃO começa com o prefixo, verificamos se é uma resposta válida para o jogo
   if (!message.content.startsWith(PREFIX)) {
     if (state.isActive) {
       const currentLetter = state.currentLetter;
-
-      // Ignora se o jogador já respondeu
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
-
-      // Verifica se começa com a letra e tem vírgulas (indício de resposta múltipla)
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -105,71 +91,61 @@ module.exports = async (message) => {
           const hasInvalidLetter = cleanedAnswers.some(
             (ans) => !ans.startsWith(currentLetter)
           );
-
           if (hasInvalidLetter) {
             return message.channel
               .send({
                 embeds: [
                   createFeedbackEmbed(
-                    "❌ Resposta Inválida",
-                    `Todas as respostas devem começar com a letra **${currentLetter}**!`,
-                    0x00bfff
+                    "<:Nao:1443642030637977743> Resposta Inválida",
+                    `Todas as respostas devem começar com a letra **${currentLetter}**!`
                   ),
                 ],
               })
               .then((m) => setTimeout(() => m.delete(), 5000));
           }
-
           state.players[userId] = {
             answers: cleanedAnswers,
             isStopped: true,
             score: 0,
           };
-
-          await message.react("✅");
-          // Apaga a resposta do usuário para limpar o chat
-          if (message.deletable) {
+          await message.react("<:certo_froid:1443643346722754692>");
+          if (message.deletable)
             try {
               await message.delete();
             } catch (e) {}
-          }
           return;
         }
       }
     }
-    return; // Não é comando nem resposta de jogo
+    return;
   }
 
-  // 3. EXCLUSÃO CENTRALIZADA DE COMANDOS
-  // Deleta a mensagem de comando do usuário para manter o chat limpo
+  // 3. EXCLUSÃO DE COMANDO
   if (message.deletable) {
     try {
       await message.delete();
     } catch (error) {
-      // Ignora erro se a mensagem já foi deletada (Unknown Message)
       if (error.code !== 10008) console.error("Erro delete:", error);
     }
   }
 
   const args = message.content.slice(PREFIX.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
-  // ====================================================
-  // 3. ROTEAMENTO DE COMANDOS
-  // ====================================================
+  // ==========================
+  // ROTEAMENTO DE COMANDOS
+  // ==========================
 
-  // --- PAINÉIS GERAIS (ZERO TRUST) ---
-  if (["cargo", "cargos"].includes(command)) return sendRolePanel(message);
+  // --- PAINÉIS GERAIS DE ADMINISTRAÇÃO ---
+  if (["cargo", "cargosadmin"].includes(command)) return sendRolePanel(message); // Painel de criar/deletar cargos
   if (["canal", "canais", "infra"].includes(command))
     return handleChannelPanel(message);
   if (["mod", "punir", "justice"].includes(command))
     return handleModPanel(message);
 
-  // --- INFO & AJUDA ---
+  // --- SISTEMAS ---
   if (["help", "ajuda", "comandos"].includes(command))
     return handleHelp(message);
   if (["sistemas", "botinfo"].includes(command)) return handleBotInfo(message);
-
-  // --- SISTEMA VIP ---
   if (
     [
       "vip",
@@ -182,87 +158,110 @@ module.exports = async (message) => {
     ].includes(command)
   )
     return handleVipCommands(message, command, args);
-
-  // --- SISTEMA DE PROTEÇÃO ---
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
+  if (["pd", "setpd", "removepd"].includes(command))
+    return handlePDCommand(message, command, args);
 
-  // --- MODERAÇÃO BÁSICA ---
+  // --- MODERAÇÃO MANUAL ---
   if (command === "ban") return handleBan(message, args);
   if (command === "unban") return handleUnban(message, args);
   if (command === "kick") return handleKick(message, args);
   if (command === "nuke") return handleNuke(message);
-
-  // --- MODERAÇÃO TEMPORAL ---
   if (command === "mute") return handleMute(message, args);
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
   if (command === "soltar") return handleUnjail(message, args);
+  if (["lock", "trancar"].includes(command)) return handleLockdown(message);
+  if (["lockall", "trancartudo"].includes(command))
+    return handleLockdownAll(message);
+  if (["unlock", "destrancar"].includes(command))
+    return handleUnlockdown(message);
+  if (["unlockall", "destrancartudo"].includes(command))
+    return handleUnlockdownAll(message);
 
-  // --- LOCKDOWN ---
-  if (command === "lock") return handleLockdown(message);
-  if (command === "lockall") return handleLockdownAll(message);
-  if (command === "unlock") return handleUnlockdown(message);
-  if (command === "unlockall") return handleUnlockdownAll(message);
-
-  // --- PD MANAGER ---
-  if (["pd", "setpd", "removepd"].includes(command))
-    return handlePDCommand(message, command, args);
-
-  // --- UTILITÁRIOS ---
+  // --- UTIL ---
   if (command === "av") return handleAvatar(message, args);
   if (command === "repeat") return handleRepeat(message, args);
   if (["membros", "listmembers", "list"].includes(command))
-    return handleListMembers(message, args); // <--- LISTA DE MEMBROS // --- PAINEL DE CARGOS (ROLES LEGADO) ---
+    return handleListMembers(message, args); // --- PAINEL DE CARGOS (AUTO-ROLE / JOGOS) - ATUALIZADO ---
 
-  if (command === "roles") {
+  if (command === "roles" || command === "cargos") {
+    // 'cargos' agora aponta para o auto-role, use 'cargosadmin' para gestão
     if (!message.member.permissions.has("MANAGE_GUILD")) {
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
-            "🔒 Sem Permissão",
+            "<:cadeado:1443642375833518194> Sem Permissão",
             `Requer **Gerenciar Servidor**.`
           ),
         ],
       });
     }
 
-    const freefireEmoji = message.guild.emojis.cache.get(EMOJIS.FREEFIRE_ID);
-    const valorantEmoji = message.guild.emojis.cache.get(EMOJIS.VALORANT_ID);
-
     const rolePanelEmbed = new EmbedBuilder()
-      .setTitle("🎮 Escolha seu Jogo")
+      .setTitle("<:controle:1443678488870785044> Selecione seus Jogos")
       .setDescription(
-        "Reaja de acordo com seu jogo:\n\n" +
-          `${freefireEmoji || "FREEFIRE"} — Cargo de Free Fire\n` +
-          `${valorantEmoji || "VALORANT"} — Cargo de Valorant\n\n` +
-          "*Você pode remover o cargo tirando a reação.*"
+        "Clique nos botões abaixo para adicionar ou remover as tags de jogo no seu perfil.\n" +
+          "Isso liberará canais e notificações específicas para cada game."
       )
-      .setColor(0x9b59b6)
-      .setThumbnail(message.guild.iconURL({ dynamic: true }))
+      .setColor(COLOR_NEUTRAL)
+      .setImage(HEADER_IMAGE)
       .setTimestamp();
+
+    // Linha 1: FPS / Tiro
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("btn_role_ff")
+        .setLabel("Free Fire")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:freefire:1443689056197283982>"),
+      new ButtonBuilder()
+        .setCustomId("btn_role_val")
+        .setLabel("Valorant")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:valorant:1439457595290292344>"),
+      new ButtonBuilder()
+        .setCustomId("btn_role_cs")
+        .setLabel("CS:GO/2")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:cs2:1443689897998422087>")
+    );
+
+    // Linha 2: Outros
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("btn_role_gta")
+        .setLabel("GTA V")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:fiveM:1443690654612848690>"),
+      new ButtonBuilder()
+        .setCustomId("btn_role_roblox")
+        .setLabel("Roblox")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:roblox:1443691205929078876>"),
+      new ButtonBuilder()
+        .setCustomId("btn_role_mine")
+        .setLabel("Minecraft")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:minecraft:1443692753958600898>")
+    );
+
     try {
       const sentMessage = await message.channel.send({
         embeds: [rolePanelEmbed],
+        components: [row1, row2],
       });
-      await sentMessage.react(EMOJIS.FREEFIRE_ID);
-      await sentMessage.react(EMOJIS.VALORANT_ID);
-
-      return message.author
-        .send({
-          embeds: [
-            createFeedbackEmbed(
-              "✅ Painel Postado",
-              `ID da Mensagem: \`${sentMessage.id}\`\nAtualize o \`.env\` e reinicie.`,
-              0x00ff00
-            ),
-          ],
-        })
-        .catch(() => {});
+      // Não precisamos mais de reações aqui
     } catch (error) {
       console.error("Erro Roles:", error);
       return message.channel.send({
-        embeds: [createFeedbackEmbed("❌ Erro", "Falha ao postar painel.")],
+        embeds: [
+          createFeedbackEmbed(
+            "<:Nao:1443642030637977743> Erro",
+            "Falha ao postar painel."
+          ),
+        ],
       });
     }
   } // --- JOGO STOP ---
@@ -280,19 +279,28 @@ module.exports = async (message) => {
     await startRound(message, state, true);
     return;
   }
-
   if (command === "parar") {
     if (!state.isActive)
       return message.channel.send({
-        embeds: [createFeedbackEmbed("❌ Jogo Inativo", `Não há jogo ativo.`)],
+        embeds: [
+          createFeedbackEmbed(
+            "<:Nao:1443642030637977743> Jogo Inativo",
+            `Não há jogo ativo.`
+          ),
+        ],
       });
     clearTimeout(state.timer);
     state.isActive = false;
-    await message.channel.send(
-      `✅ **STOP!** Rodada encerrada. Iniciando revisão...`
-    );
+    await message.channel.send({
+      embeds: [
+        createFeedbackEmbed(
+          "<:certo_froid:1443643346722754692> STOP!",
+          "Rodada encerrada manualmente."
+        ),
+      ],
+    });
     await postReviewEmbed(state, message.channel);
-  } // --- RESPOSTA STOP OBSOLETA ---
+  } // --- RESPOSTA OBSOLETA ---
 
   if (command === "resposta" || command === "respostas") {
     return message.channel
@@ -300,7 +308,7 @@ module.exports = async (message) => {
         embeds: [
           createFeedbackEmbed(
             "Obsoleto",
-            `Não use \`${PREFIX}resposta\`! Envie direto.`
+            `Envie suas respostas direto no chat.`
           ),
         ],
       })

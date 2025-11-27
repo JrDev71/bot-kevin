@@ -6,17 +6,15 @@ const {
   ButtonStyle,
   PermissionsBitField,
   ChannelType,
-  StringSelectMenuBuilder,
 } = require("discord.js");
 
-// IDs
+// IDs dos Componentes (Botões, Modais e Menus)
 const BTN = {
   CREATE: "btn_ch_create",
   EDIT: "btn_ch_edit",
   DELETE: "btn_ch_delete",
 };
 const MDL = { CREATE: "mdl_ch_create", RENAME: "mdl_ch_rename" };
-// Adicionamos SEL.CAT para selecionar a categoria pai
 const SEL = {
   DEL: "sel_ch_del",
   EDIT: "sel_ch_edit",
@@ -24,12 +22,18 @@ const SEL = {
   CAT: "sel_ch_cat",
 };
 
-// --- MODELOS DE PERMISSÃO ---
+// Configuração Visual
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
+
+// --- MODELOS DE PERMISSÃO (PRESETS) ---
+// Exportado para ser usado pelo Handler na hora de criar
 const CHANNEL_PRESETS = {
   // --- CATEGORIAS ---
   cat_public: {
     label: "📂 Categoria Pública",
-    description: "Todos veem os canais dentro.",
+    description: "Organização: Todos veem os canais dentro.",
     type: ChannelType.GuildCategory,
     overwrites: (guild) => [
       {
@@ -40,7 +44,7 @@ const CHANNEL_PRESETS = {
   },
   cat_staff: {
     label: "🔐 Categoria Staff",
-    description: "Apenas Staff vê.",
+    description: "Organização: Apenas Staff vê o conteúdo dentro.",
     type: ChannelType.GuildCategory,
     overwrites: (guild) => [
       {
@@ -52,7 +56,7 @@ const CHANNEL_PRESETS = {
   // --- CANAIS DE TEXTO ---
   public_text: {
     label: "💬 Chat Público",
-    description: "Texto: Todos leem e escrevem.",
+    description: "Texto: Aberto para todos.",
     type: ChannelType.GuildText,
     overwrites: (guild) => [
       {
@@ -65,8 +69,8 @@ const CHANNEL_PRESETS = {
     ],
   },
   announcement: {
-    label: "📢 Avisos (Leitura)",
-    description: "Texto: Todos leem, ninguém fala.",
+    label: "<:voz:1443651112644378818> Avisos (Leitura)",
+    description: "Texto: Apenas leitura.",
     type: ChannelType.GuildText,
     overwrites: (guild) => [
       {
@@ -77,7 +81,6 @@ const CHANNEL_PRESETS = {
     ],
   },
   staff_text: {
-    // <--- ESTE ESTAVA FALTANDO OU NÃO APARECENDO
     label: "🕵️ Chat Staff (Privado)",
     description: "Texto: Invisível para membros.",
     type: ChannelType.GuildText,
@@ -104,7 +107,6 @@ const CHANNEL_PRESETS = {
     ],
   },
   staff_voice: {
-    // <--- ESTE TAMBÉM
     label: "🔒 Voz Staff (Privado)",
     description: "Voz: Apenas Staff conecta.",
     type: ChannelType.GuildVoice,
@@ -137,32 +139,34 @@ module.exports = {
       return message.reply("🔒 Sem permissão.");
 
     const embed = new EmbedBuilder()
-      .setTitle("🎛️ Infraestrutura (Zero Trust)")
+      .setTitle("Infraestrutura de Canais")
       .setDescription(
-        "Gerencie a estrutura do servidor.\n\n" +
-          "**1.** Clique em Criar.\n**2.** Escolha Nome e Tipo.\n**3.** Escolha a Categoria.\n**4.** Escolha a Permissão."
+        "Gerencie a estrutura do servidor (Categorias, Texto e Voz) utilizando modelos seguros.\n" +
+          "Você não precisa configurar permissões manualmente."
       )
-      .setColor(0x2b2d31)
+      .setColor(COLOR_NEUTRAL)
+      .setImage(HEADER_IMAGE)
       .setThumbnail(message.guild.iconURL());
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(BTN.CREATE)
         .setLabel("Criar")
-        .setStyle(ButtonStyle.Success)
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("➕"),
       new ButtonBuilder()
         .setCustomId(BTN.EDIT)
-        .setLabel("Editar")
-        .setStyle(ButtonStyle.Primary)
+        .setLabel("Renomear")
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("✏️"),
       new ButtonBuilder()
         .setCustomId(BTN.DELETE)
         .setLabel("Deletar")
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("🗑️")
     );
 
     await message.channel.send({ embeds: [embed], components: [row] });
+    if (message.deletable) message.delete().catch(() => {});
   },
 };

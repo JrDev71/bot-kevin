@@ -21,7 +21,7 @@ module.exports = {
     await channel.delete();
 
     const nukeEmbed = new EmbedBuilder()
-      .setTitle("💥 CANAL RESETADO (NUKE)")
+      .setTitle("💥 CANAL RESETADO")
       .setDescription("Este canal foi recriado. O histórico foi limpo.")
       .setImage(
         "https://media1.tenor.com/m/XM_T0VX5a0AAAAAC/nuclear-bomb-explosion.gif"

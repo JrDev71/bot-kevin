@@ -41,7 +41,8 @@ module.exports = {
         if (cooldowns.has(message.author.id)) {
           return message
             .reply({
-              content: "⏳ Aguarde um pouco para usar este comando novamente.",
+              content:
+                "<:temporizador:1443649098195402865> Aguarde um pouco para usar este comando novamente.",
               ephemeral: true,
             })
             .then((msg) =>
@@ -86,10 +87,14 @@ module.exports = {
         }, 5000); // 5 segundos de cooldown
       }
     } catch (error) {
-      console.error("[AVATAR] ❌ Erro ao executar o comando:", error);
+      console.error(
+        "[AVATAR] <:Nao:1443642030637977743> Erro ao executar o comando:",
+        error
+      );
       message.channel
         .send({
-          content: "❌ Ocorreu um erro ao tentar buscar o avatar.",
+          content:
+            "<:Nao:1443642030637977743> Ocorreu um erro ao tentar buscar o avatar.",
         })
         .then((m) => setTimeout(() => m.delete().catch(() => {}), 5000));
     }

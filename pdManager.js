@@ -1,12 +1,12 @@
 // pdManager.js
 const { EmbedBuilder } = require("discord.js");
 const logEmbed = require("./utils/logEmbed");
-const prisma = require("./database"); // Conexão com o Banco
+const prisma = require("./database"); // Conexão com o Banco de Dados
 
 const MAX_PDS_PER_STAFF = 2;
 const PREFIX = "k!";
 
-// IDs hardcoded
+// IDs e Configurações
 const PD_ROLE_ID = "1435040530701746236";
 const PD_PERMITTED_ROLES = [
   "1435040516814147715",
@@ -15,16 +15,22 @@ const PD_PERMITTED_ROLES = [
   "1435040519918059521",
 ];
 
+// Configuração Visual (Padronizada)
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
+
 // --- UTILITY ---
-const createFeedbackEmbed = (title, description, color = 0xff0000) => {
+const createFeedbackEmbed = (title, description, color = COLOR_NEUTRAL) => {
   return new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
     .setColor(color)
+    .setImage(HEADER_IMAGE)
     .setTimestamp();
 };
 
-// --- Funções de Gerenciamento de Dados (AGORA COM PRISMA) ---
+// --- Funções de Gerenciamento de Dados (PRISMA / DB) ---
 
 /**
  * Retorna a lista de todas as PDs do banco.
@@ -60,7 +66,7 @@ async function addPd(pdMemberId, staffMemberId) {
     if (currentCount >= MAX_PDS_PER_STAFF) {
       return {
         success: false,
-        message: `Você já indicou o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas, Guloso👀.`,
+        message: `Você já indicou o limite de ${MAX_PDS_PER_STAFF} Primeiras Damas.`,
       };
     }
 
@@ -76,7 +82,7 @@ async function addPd(pdMemberId, staffMemberId) {
     return { success: true, message: "Primeira Dama adicionada com sucesso." };
   } catch (e) {
     console.error("[DB ERROR] addPd:", e);
-    return { success: false, message: "Erro no banco de dados." };
+    return { success: false, message: "Erro de conexão com o banco de dados." };
   }
 }
 
@@ -107,7 +113,7 @@ async function removePd(memberIdToRemove) {
 // --- ROTEADOR E HANDLER DE COMANDOS PD ---
 
 async function handlePDCommand(message, command, args) {
-  // Agora precisamos esperar a promessa do banco
+  // Carrega dados (Await necessário pois vem do banco)
   const pdData = await getPdData();
   const client = message.client;
   const authorTag = message.author.tag;
@@ -115,7 +121,7 @@ async function handlePDCommand(message, command, args) {
   const logChannelId =
     client.config.PD_LOG_CHANNEL_ID || client.config.LOG_CHANNEL_ID;
 
-  // --- Comando: k!pd (Visualizar PDs Atuais) ---
+  // --- Comando: k!pd (LISTAR) ---
   if (command === "pd") {
     if (pdData.pds.length === 0) {
       return message.channel.send({
@@ -133,7 +139,8 @@ async function handlePDCommand(message, command, args) {
       .setTitle(
         `<:designcoroa:1443638142430085140> Primeiras Damas Atuais do Servidor`
       )
-      .setColor(0xffa500);
+      .setColor(COLOR_NEUTRAL)
+      .setImage(HEADER_IMAGE);
 
     for (const [index, pd] of pdData.pds.entries()) {
       const pdMember = await message.guild.members
@@ -141,16 +148,15 @@ async function handlePDCommand(message, command, args) {
         .catch(() => null);
       const staffUser = await client.users.fetch(pd.staffId).catch(() => null);
 
-      const staffTag = staffUser ? staffUser.tag : "Staff Desconhecido";
-      // Converte Date do banco para string legível
+      const staffTag = staffUser ? staffUser.tag : "Dono Desconhecido";
       const sinceDate = new Date(pd.since).toLocaleDateString("pt-BR");
 
       if (pdMember) {
-        const pdName = pdMember.displayName;
-
         pdEmbed.addFields({
-          name: `<:dama:1443641517410488514> #${index + 1}: ${pdName}`,
-          value: `**Indicada por:** ${staffTag}\n**Desde:** ${sinceDate}`,
+          name: `<:dama:1443703932835594430> #${index + 1}: ${
+            pdMember.displayName
+          }`,
+          value: `**Definida por:** ${staffTag}\n**Desde:** ${sinceDate}`,
           inline: true,
         });
 
@@ -192,6 +198,7 @@ async function handlePDCommand(message, command, args) {
     const memberIdentifier = args[0];
     let newPdMember = message.mentions.members.first();
 
+    // Busca por ID se não houver menção
     if (!newPdMember && memberIdentifier) {
       const rawId = memberIdentifier.replace(/<@!?(\d+)>/, "$1");
       if (/^\d+$/.test(rawId)) {
@@ -244,9 +251,10 @@ async function handlePDCommand(message, command, args) {
     }
 
     try {
+      // 1. Dá o cargo
       await newPdMember.roles.add(pdRole);
 
-      // Conta no banco quantas esse staff tem agora
+      // 2. Conta quantas PDs esse staff tem
       const count = await prisma.pd.count({
         where: { staffId: message.author.id },
       });
@@ -255,12 +263,15 @@ async function handlePDCommand(message, command, args) {
       const successEmbed = createFeedbackEmbed(
         "<:certo_froid:1443643346722754692> Sucesso!",
         `O Dono **${authorTag}** indicou ${newPdMember.user.tag} como uma **Primeira Dama**!\n\n` +
-          `Você ainda pode indicar mais **${remaining}** PDs.`,
+          `Você ainda pode indicar mais **${
+            remaining >= 0 ? remaining : 0
+          }** PDs.`,
         0x00ff00
       );
 
       await message.channel.send({ embeds: [successEmbed] });
 
+      // 3. Log de Auditoria
       await logEmbed(
         client,
         logChannelId,
@@ -269,21 +280,22 @@ async function handlePDCommand(message, command, args) {
         0xf1c40f,
         [
           {
-            name: "<:dama:1443641517410488514> PD",
+            name: "<:dama:1443703932835594430> PD",
             value: `<@${newPdMember.id}>`,
             inline: true,
           },
           {
-            name: "<:nikeboy:1443644536537481267> Indicada por",
+            name: "👮 Indicada por",
             value: `<@${message.author.id}>`,
             inline: true,
           },
+          { name: "🔢 Vagas Restantes", value: `${remaining}`, inline: true },
         ],
         newPdMember.user.displayAvatarURL()
       );
     } catch (error) {
       console.error("Erro ao adicionar cargo de PD:", error);
-      await removePd(newPdMember.id); // Reverte DB se falhar no Discord
+      await removePd(newPdMember.id); // Reverte o banco se falhar no Discord
       return message.channel.send({
         embeds: [
           createFeedbackEmbed(
@@ -336,17 +348,18 @@ async function handlePDCommand(message, command, args) {
       });
     }
 
-    // REMOVE DO BANCO (ASYNC)
-    // Primeiro tentamos remover do banco. Se não estava lá, avisamos.
-    const { success, pdToRemove } = await removePd(targetMember.id);
-
     const pdRoleId = PD_ROLE_ID;
     const pdRole = message.guild.roles.cache.get(pdRoleId);
 
-    // Se o membro tem o cargo no Discord, tentamos tirar de qualquer jeito
+    // Tenta remover do banco primeiro
+    const { success, pdToRemove } = await removePd(targetMember.id);
+
+    // Se o membro tem o cargo no Discord, tenta tirar mesmo se não estiver no banco (limpeza)
+    let roleRemoved = false;
     if (targetMember.roles.cache.has(pdRoleId)) {
       try {
         await targetMember.roles.remove(pdRole);
+        roleRemoved = true;
       } catch (e) {
         return message.channel.send({
           embeds: [
@@ -360,32 +373,31 @@ async function handlePDCommand(message, command, args) {
     }
 
     if (!success) {
-      // Se não estava no banco e não tinha cargo (ou só tinha cargo), avisamos baseado no cargo
-      if (!targetMember.roles.cache.has(pdRoleId)) {
+      if (roleRemoved) {
         return message.channel.send({
           embeds: [
             createFeedbackEmbed(
-              "<:Nao:1443642030637977743> Não Registrado",
-              `O membro ${targetMember.user.tag} não está registrado no sistema PD.`
+              "⚠️ Aviso",
+              `O membro tinha o cargo (foi removido), mas não estava registrado no banco de dados.`
             ),
           ],
         });
       } else {
-        // Tinha cargo mas não estava no banco (Inconsistência resolvida acima)
         return message.channel.send({
           embeds: [
             createFeedbackEmbed(
-              "<:am_avisoK:1443645307358544124> Aviso",
-              `O membro tinha o cargo (removido agora), mas não estava no banco de dados.`
+              "<:Nao:1443642030637977743> Não Encontrado",
+              `Este membro não é uma PD e não tem o cargo.`
             ),
           ],
         });
       }
     }
 
+    // Recupera quem indicou para o log
     const staffTag = pdToRemove?.staffId
       ? (await client.users.fetch(pdToRemove.staffId).catch(() => null))?.tag
-      : "Dono Desconhecido";
+      : "Staff Desconhecido";
 
     const removalEmbed = createFeedbackEmbed(
       "<:red_corao_partido:1443645777858662521> PD Removida",
@@ -395,6 +407,7 @@ async function handlePDCommand(message, command, args) {
 
     await message.channel.send({ embeds: [removalEmbed] });
 
+    // Log de Auditoria
     await logEmbed(
       client,
       logChannelId,
@@ -403,12 +416,12 @@ async function handlePDCommand(message, command, args) {
       0xe74c3c,
       [
         {
-          name: "<:dama:1443641517410488514> Ex-PD",
+          name: "<:dama:1443703932835594430> Ex-PD",
           value: `<@${targetMember.id}>`,
           inline: true,
         },
         {
-          name: "<:nikeboy:1443644536537481267> Removido por",
+          name: "👮 Removido por",
           value: `<@${message.author.id}>`,
           inline: true,
         },
@@ -420,7 +433,6 @@ async function handlePDCommand(message, command, args) {
   }
 }
 
-// Exporta também as funções para uso externo se necessário (ex: handlers)
 module.exports = {
   handlePDCommand,
   getPdData,

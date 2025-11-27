@@ -10,78 +10,10 @@ const {
   PermissionsBitField,
   UserSelectMenuBuilder,
   RoleSelectMenuBuilder,
-  StringSelectMenuBuilder, // NOVO: Para selecionar o nível de permissão
+  StringSelectMenuBuilder,
 } = require("discord.js");
 
 const logEmbed = require("../utils/logEmbed");
-
-// --- CONFIGURAÇÃO DE MODELOS DE PERMISSÃO ---
-const PERM_PRESETS = {
-  cosmetic: {
-    label: "🎨 Cosmético (Sem permissões)",
-    description: "Apenas para cor/enfeite. Não vê canais extras.",
-    perms: [], // Nenhuma permissão específica (herda @everyone)
-  },
-  member: {
-    label: "👤 Membro Padrão",
-    description: "Ver canais, falar, conectar em voz, mudar apelido.",
-    perms: [
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.EmbedLinks,
-      PermissionsBitField.Flags.AttachFiles,
-      PermissionsBitField.Flags.ReadMessageHistory,
-      PermissionsBitField.Flags.Connect,
-      PermissionsBitField.Flags.Speak,
-      PermissionsBitField.Flags.ChangeNickname,
-    ],
-  },
-  helper: {
-    label: "🤝 Suporte / Helper",
-    description: "Membro + Mover em call, Prioridade de voz.",
-    perms: [
-      // Inclui as de membro...
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.Connect,
-      PermissionsBitField.Flags.Speak,
-      // Extras
-      PermissionsBitField.Flags.MoveMembers,
-      PermissionsBitField.Flags.PrioritySpeaker,
-    ],
-  },
-  mod: {
-    label: "🛡️ Moderador (Seguro)",
-    description: "Helper + Castigo (Timeout), Gerenciar Msgs, Kick.",
-    perms: [
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.SendMessages,
-      PermissionsBitField.Flags.Connect,
-      PermissionsBitField.Flags.Speak,
-      PermissionsBitField.Flags.MoveMembers,
-      // Poderes de Mod
-      PermissionsBitField.Flags.ModerateMembers, // Timeout
-      PermissionsBitField.Flags.ManageMessages, // Apagar msg
-      PermissionsBitField.Flags.KickMembers, // Expulsar
-      PermissionsBitField.Flags.MuteMembers,
-      PermissionsBitField.Flags.DeafenMembers,
-    ],
-  },
-  admin: {
-    label: "⚙️ Admin (Semi-Deus)",
-    description: "Mod + Banir + Gerenciar Canais/Cargos. (SEM ADMINISTRATOR)",
-    perms: [
-      PermissionsBitField.Flags.ViewChannel,
-      PermissionsBitField.Flags.ModerateMembers,
-      PermissionsBitField.Flags.ManageMessages,
-      // Poderes Altos
-      PermissionsBitField.Flags.BanMembers,
-      PermissionsBitField.Flags.ManageChannels,
-      PermissionsBitField.Flags.ManageRoles, // Cuidado: só mexe abaixo dele
-      PermissionsBitField.Flags.ViewAuditLog,
-    ],
-  },
-};
 
 // IDs dos Componentes
 const BTN = {
@@ -99,10 +31,79 @@ const SEL = {
   ROLE_REM: "sel_r_rem",
   ROLE_DEL: "sel_r_del",
   ROLE_EDIT: "sel_r_edit",
-  PERM_LEVEL: "sel_perm_level", // NOVO
+  PERM_LEVEL: "sel_perm_level",
 };
 
-// Cache temporário para guardar Nome/Cor enquanto seleciona a permissão
+// CONFIG VISUAL
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
+
+// --- PRESETS DE SEGURANÇA ---
+const PERM_PRESETS = {
+  cosmetic: {
+    label: "🎨 Cosmético",
+    description: "Sem permissões extras. Apenas cor e destaque.",
+    perms: [],
+  },
+  member: {
+    label: "👤 Membro Padrão",
+    description: "Ver canais, falar, conectar, mudar apelido.",
+    perms: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.EmbedLinks,
+      PermissionsBitField.Flags.AttachFiles,
+      PermissionsBitField.Flags.ReadMessageHistory,
+      PermissionsBitField.Flags.Connect,
+      PermissionsBitField.Flags.Speak,
+      PermissionsBitField.Flags.ChangeNickname,
+    ],
+  },
+  helper: {
+    label: "🤝 Suporte / Helper",
+    description: "Mover membros em call, Prioridade de voz.",
+    perms: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.Connect,
+      PermissionsBitField.Flags.Speak,
+      PermissionsBitField.Flags.MoveMembers,
+      PermissionsBitField.Flags.PrioritySpeaker,
+    ],
+  },
+  mod: {
+    label: "🛡️ Moderador",
+    description: "Timeout (Castigo), Gerenciar Msgs, Expulsar.",
+    perms: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.SendMessages,
+      PermissionsBitField.Flags.Connect,
+      PermissionsBitField.Flags.Speak,
+      PermissionsBitField.Flags.MoveMembers,
+      PermissionsBitField.Flags.ModerateMembers,
+      PermissionsBitField.Flags.ManageMessages,
+      PermissionsBitField.Flags.KickMembers,
+      PermissionsBitField.Flags.MuteMembers,
+      PermissionsBitField.Flags.DeafenMembers,
+    ],
+  },
+  admin: {
+    label: "⚙️ Administrador (Seguro)",
+    description: "Banir, Gerenciar Canais/Cargos (Sem a flag Administrator).",
+    perms: [
+      PermissionsBitField.Flags.ViewChannel,
+      PermissionsBitField.Flags.ModerateMembers,
+      PermissionsBitField.Flags.ManageMessages,
+      PermissionsBitField.Flags.BanMembers,
+      PermissionsBitField.Flags.ManageChannels,
+      PermissionsBitField.Flags.ManageRoles,
+      PermissionsBitField.Flags.ViewAuditLog,
+    ],
+  },
+};
+
+// Cache temporário para criação (Nome/Cor)
 const creationCache = new Map();
 
 function canManageRoles(member) {
@@ -123,58 +124,65 @@ function canAssignRoles(member) {
 module.exports = {
   BTN,
   MDL,
-  SEL, // Exporta IDs
+  SEL,
 
+  // Função de Envio do Painel
   sendRolePanel: async (message) => {
-    if (!canAssignRoles(message.member)) return message.reply("🔒 Sem acesso.");
+    if (!canAssignRoles(message.member))
+      return message.reply("<:cadeado:1443642375833518194> Acesso negado.");
 
     const embed = new EmbedBuilder()
-      .setTitle("📇 Gestão de Cargos (Zero Trust)")
+      .setTitle("Gestão de Cargos")
       .setDescription(
-        "Sistema seguro de criação e atribuição de cargos.\n\n**Modelos de Segurança:** Os cargos criados aqui seguem padrões rígidos de permissão."
+        "Painel administrativo para controle de hierarquia e atribuições.\nSelecione uma ação abaixo."
       )
-      .setColor(0x5865f2)
+      .setColor(COLOR_NEUTRAL)
+      .setImage(HEADER_IMAGE)
       .addFields({
-        name: "Nível",
-        value: canManageRoles(message.member) ? "✅ Gestor" : "⚠️ Operacional",
+        name: "Seu Nível",
+        value: canManageRoles(message.member)
+          ? "<:certo_froid:1443643346722754692> Gestor Total"
+          : "<:am_avisoK:1443645307358544124> Operacional (Apenas Atribuição)",
       });
 
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(BTN.CREATE)
         .setLabel("Criar Novo")
-        .setStyle(ButtonStyle.Success)
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("✨")
         .setDisabled(!canManageRoles(message.member)),
       new ButtonBuilder()
         .setCustomId(BTN.EDIT)
         .setLabel("Editar")
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("✏️")
         .setDisabled(!canManageRoles(message.member)),
       new ButtonBuilder()
         .setCustomId(BTN.DELETE)
         .setLabel("Excluir")
-        .setStyle(ButtonStyle.Danger)
-        .setEmoji("🗑️")
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji("<:vmc_lixeiraK:1443653159779041362>")
         .setDisabled(!canManageRoles(message.member))
     );
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(BTN.ADD)
-        .setLabel("Dar Cargo")
+        .setLabel("Atribuir a Membro")
         .setStyle(ButtonStyle.Secondary)
         .setEmoji("➕"),
       new ButtonBuilder()
         .setCustomId(BTN.REM)
-        .setLabel("Tirar Cargo")
+        .setLabel("Remover de Membro")
         .setStyle(ButtonStyle.Secondary)
         .setEmoji("➖")
     );
 
     await message.channel.send({ embeds: [embed], components: [row1, row2] });
+    if (message.deletable) message.delete().catch(() => {});
   },
 
+  // Handler de Interações
   handleRoleInteractions: async (interaction) => {
     const { customId } = interaction;
     const isButton = interaction.isButton();
@@ -183,15 +191,32 @@ module.exports = {
     const guild = interaction.guild;
     const logChannelId = interaction.client.config.LOG_CHANNEL_ID;
 
+    // Helper de Resposta Visual
+    const replyEmbed = (title, desc) => {
+      return interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle(title)
+            .setDescription(desc)
+            .setColor(COLOR_NEUTRAL)
+            .setImage(HEADER_IMAGE)
+            .setTimestamp(),
+        ],
+        components: [],
+      });
+    };
+
     // --- BOTÕES ---
     if (isButton) {
-      // 1. CRIAR (Abre Modal)
       if (customId === BTN.CREATE) {
         if (!canManageRoles(interaction.member))
-          return interaction.reply({ content: "🔒 Negado.", ephemeral: true });
+          return interaction.reply({
+            content: "<:cadeado:1443642375833518194> Negado.",
+            ephemeral: true,
+          });
         const modal = new ModalBuilder()
           .setCustomId(MDL.CREATE)
-          .setTitle("Criar Novo Cargo");
+          .setTitle("Criar Cargo");
         modal.addComponents(
           new ActionRowBuilder().addComponents(
             new TextInputBuilder()
@@ -211,43 +236,55 @@ module.exports = {
         );
         return interaction.showModal(modal);
       }
-      // 2. EDITAR/DELETAR/ADD/REM (Lógica Mantida)
+
       if (customId === BTN.EDIT) {
         if (!canManageRoles(interaction.member))
-          return interaction.reply({ content: "🔒 Negado.", ephemeral: true });
+          return interaction.reply({
+            content: "<:cadeado:1443642375833518194> Negado.",
+            ephemeral: true,
+          });
         const row = new ActionRowBuilder().addComponents(
           new RoleSelectMenuBuilder()
             .setCustomId(SEL.ROLE_EDIT)
-            .setPlaceholder("Selecione o cargo")
+            .setPlaceholder("Selecione o cargo para editar")
         );
         return interaction.reply({
-          content: "Qual cargo editar?",
+          content: "Selecione o cargo:",
           components: [row],
           ephemeral: true,
         });
       }
+
       if (customId === BTN.DELETE) {
         if (!canManageRoles(interaction.member))
-          return interaction.reply({ content: "🔒 Negado.", ephemeral: true });
+          return interaction.reply({
+            content: "<:cadeado:1443642375833518194> Negado.",
+            ephemeral: true,
+          });
         const row = new ActionRowBuilder().addComponents(
           new RoleSelectMenuBuilder()
             .setCustomId(SEL.ROLE_DEL)
-            .setPlaceholder("Selecione para EXCLUIR")
+            .setPlaceholder("Selecione o cargo para EXCLUIR")
         );
         return interaction.reply({
-          content: "⚠️ Qual cargo excluir?",
+          content:
+            "<:am_avisoK:1443645307358544124> Ação irreversível. Selecione o cargo:",
           components: [row],
           ephemeral: true,
         });
       }
+
       if (customId === BTN.ADD || customId === BTN.REM) {
         if (!canAssignRoles(interaction.member))
-          return interaction.reply({ content: "🔒 Negado.", ephemeral: true });
+          return interaction.reply({
+            content: "<:cadeado:1443642375833518194> Negado.",
+            ephemeral: true,
+          });
         const nextId = customId === BTN.ADD ? SEL.USER_ADD : SEL.USER_REM;
         const row = new ActionRowBuilder().addComponents(
           new UserSelectMenuBuilder()
             .setCustomId(nextId)
-            .setPlaceholder("Selecione o membro")
+            .setPlaceholder("Selecione o membro alvo")
         );
         return interaction.reply({
           content: `Selecione o membro:`,
@@ -257,16 +294,15 @@ module.exports = {
       }
     }
 
-    // --- MODAL (CRIAR) ---
+    // --- MODAL (DADOS INICIAIS DA CRIAÇÃO) ---
     if (isModal && customId === MDL.CREATE) {
       const name = interaction.fields.getTextInputValue("r_name");
       const color =
         interaction.fields.getTextInputValue("r_color") || "#99AAB5";
 
-      // Salva os dados temporariamente e pede o nível de permissão
+      // Salva no cache e pede permissões
       creationCache.set(interaction.user.id, { name, color });
 
-      // Cria o Menu de Seleção de Permissões
       const options = Object.entries(PERM_PRESETS).map(([key, data]) => ({
         label: data.label,
         description: data.description,
@@ -282,12 +318,12 @@ module.exports = {
 
       await interaction.deferReply({ ephemeral: true });
       return interaction.editReply({
-        content: `📝 Cargo: **${name}**\n🎨 Cor: **${color}**\n\nAgora, selecione as permissões que este cargo terá:`,
+        content: `📝 **${name}**\nEscolha o modelo de segurança:`,
         components: [row],
       });
     }
 
-    // --- MODAL (EDITAR - Finalização) ---
+    // --- MODAL (EDIÇÃO FINAL) ---
     if (isModal && customId.startsWith(MDL.EDIT)) {
       await interaction.deferReply({ ephemeral: true });
       const roleId = customId.split("_").pop();
@@ -295,7 +331,7 @@ module.exports = {
       const name = interaction.fields.getTextInputValue("r_newname");
       const color = interaction.fields.getTextInputValue("r_newcolor");
 
-      if (!role) return interaction.editReply("Cargo não encontrado.");
+      if (!role) return replyEmbed("Erro", "Cargo não encontrado.");
       try {
         await role.edit({
           name: name || role.name,
@@ -308,15 +344,18 @@ module.exports = {
           `**${role.name}** editado por <@${interaction.user.id}>`,
           0xf1c40f
         );
-        return interaction.editReply(`✅ Cargo **${role.name}** atualizado.`);
+        return replyEmbed(
+          "Sucesso",
+          `<:certo_froid:1443643346722754692> Cargo atualizado.`
+        );
       } catch (e) {
-        return interaction.editReply(`❌ Erro: ${e.message}`);
+        return replyEmbed("Erro", `Falha: ${e.message}`);
       }
     }
 
     // --- SELETORES ---
     if (isSelect) {
-      // 1. SELECIONOU O NÍVEL DE PERMISSÃO (CRIAÇÃO)
+      // 1. CRIAÇÃO FINAL (PRESET)
       if (customId === SEL.PERM_LEVEL) {
         await interaction.deferUpdate();
         const presetKey = interaction.values[0];
@@ -324,44 +363,33 @@ module.exports = {
         const data = creationCache.get(interaction.user.id);
 
         if (!data)
-          return interaction.editReply({
-            content: "⚠️ Tempo esgotado ou dados perdidos. Tente novamente.",
-            components: [],
-          });
+          return replyEmbed("Erro", "Tempo esgotado. Tente novamente.");
 
         try {
-          // Criação Segura do Cargo
           const role = await guild.roles.create({
             name: data.name,
             color: data.color,
-            permissions: preset.perms, // Aplica o array de permissões seguro
+            permissions: preset.perms,
             reason: `Painel (${preset.label}) por ${interaction.user.tag}`,
           });
-
-          // Limpa cache e loga
           creationCache.delete(interaction.user.id);
           await logEmbed(
             interaction.client,
             logChannelId,
             "Cargo Criado",
-            `**${role.name}** (Nível: ${presetKey}) criado por <@${interaction.user.id}>`,
+            `**${role.name}** (${preset.label}) criado por <@${interaction.user.id}>`,
             0x00ff00
           );
-
-          return interaction.editReply({
-            content: `✅ Cargo **${role.name}** criado com sucesso!\n🔒 Permissões: **${preset.label}**`,
-            components: [],
-          });
+          return replyEmbed(
+            "Sucesso",
+            `<:certo_froid:1443643346722754692> Cargo **${role.name}** criado!\n<:cadeado:1443642375833518194> Nível: ${preset.label}`
+          );
         } catch (e) {
-          return interaction.editReply({
-            content: `❌ Erro ao criar: ${e.message}`,
-            components: [],
-          });
+          return replyEmbed("Erro", `Falha: ${e.message}`);
         }
       }
 
-      // 2. Lógica de Seleção de Usuário/Cargo (ADD/REM/EDIT/DEL)
-      // ... (Mesma lógica do arquivo anterior) ...
+      // 2. SELEÇÃO DE USUÁRIO (ENCADEAMENTO)
       if (customId === SEL.USER_ADD || customId === SEL.USER_REM) {
         const userId = interaction.values[0];
         const isAdd = customId === SEL.USER_ADD;
@@ -374,11 +402,12 @@ module.exports = {
             .setPlaceholder(`Qual cargo ${isAdd ? "adicionar" : "remover"}?`)
         );
         return interaction.update({
-          content: `Membro: <@${userId}>. Selecione o cargo:`,
+          content: `Membro: <@${userId}>. Agora selecione o cargo:`,
           components: [row],
         });
       }
 
+      // 3. ATRIBUIÇÃO FINAL
       if (
         customId.startsWith(SEL.ROLE_ADD) ||
         customId.startsWith(SEL.ROLE_REM)
@@ -387,16 +416,14 @@ module.exports = {
         const roleId = interaction.values[0];
         const userId = customId.split("_").pop();
         const isAdd = customId.startsWith(SEL.ROLE_ADD);
+
         const member = await guild.members.fetch(userId).catch(() => null);
         const role = guild.roles.cache.get(roleId);
 
         if (!member || !role)
-          return interaction.editReply({ content: "❌ Erro.", components: [] });
+          return replyEmbed("Erro", "Usuário ou Cargo não encontrado.");
         if (role.position >= guild.members.me.roles.highest.position)
-          return interaction.editReply({
-            content: "❌ Hierarquia.",
-            components: [],
-          });
+          return replyEmbed("Erro", "Cargo superior ao meu.");
 
         try {
           if (isAdd) {
@@ -408,10 +435,10 @@ module.exports = {
               `<@${interaction.user.id}> deu **${role.name}** para <@${member.id}>`,
               0x00ff00
             );
-            return interaction.editReply({
-              content: `✅ Cargo **${role.name}** adicionado a **${member.user.tag}**!`,
-              components: [],
-            });
+            return replyEmbed(
+              "Sucesso",
+              `<:certo_froid:1443643346722754692> Cargo **${role.name}** adicionado a **${member.user.tag}**.`
+            );
           } else {
             await member.roles.remove(role);
             await logEmbed(
@@ -421,37 +448,29 @@ module.exports = {
               `<@${interaction.user.id}> tirou **${role.name}** de <@${member.id}>`,
               0xff0000
             );
-            return interaction.editReply({
-              content: `🗑️ Cargo **${role.name}** removido de **${member.user.tag}**.`,
-              components: [],
-            });
+            return replyEmbed(
+              "Sucesso",
+              `<:vmc_lixeiraK:1443653159779041362> Cargo **${role.name}** removido de **${member.user.tag}**.`
+            );
           }
         } catch (e) {
-          return interaction.editReply({
-            content: `❌ Erro: ${e.message}`,
-            components: [],
-          });
+          return replyEmbed("Erro", `Falha: ${e.message}`);
         }
       }
 
+      // 4. DELETAR CARGO
       if (customId === SEL.ROLE_DEL) {
         await interaction.deferUpdate();
         const roleId = interaction.values[0];
         const role = guild.roles.cache.get(roleId);
-        if (!role)
-          return interaction.editReply({
-            content: "Cargo sumiu.",
-            components: [],
-          });
+
+        if (!role) return replyEmbed("Erro", "Cargo não existe.");
         if (role.position >= guild.members.me.roles.highest.position)
-          return interaction.editReply({
-            content: "❌ Hierarquia.",
-            components: [],
-          });
+          return replyEmbed("Erro", "Hierarquia insuficiente.");
 
         try {
           const name = role.name;
-          await role.delete();
+          await role.delete(`Painel por ${interaction.user.tag}`);
           await logEmbed(
             interaction.client,
             logChannelId,
@@ -459,18 +478,16 @@ module.exports = {
             `**${name}** deletado por <@${interaction.user.id}>`,
             0xff0000
           );
-          return interaction.editReply({
-            content: `🗑️ Cargo **${name}** deletado.`,
-            components: [],
-          });
+          return replyEmbed(
+            "Sucesso",
+            `<:vmc_lixeiraK:1443653159779041362> Cargo **${name}** deletado.`
+          );
         } catch (e) {
-          return interaction.editReply({
-            content: `Erro: ${e.message}`,
-            components: [],
-          });
+          return replyEmbed("Erro", `Falha: ${e.message}`);
         }
       }
 
+      // 5. EDITAR (ABRE MODAL)
       if (customId === SEL.ROLE_EDIT) {
         const roleId = interaction.values[0];
         const role = guild.roles.cache.get(roleId);
@@ -503,5 +520,7 @@ module.exports = {
         return interaction.showModal(modal);
       }
     }
+
+    return false;
   },
 };

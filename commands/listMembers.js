@@ -3,7 +3,7 @@ const { EmbedBuilder, PermissionsBitField } = require("discord.js");
 
 // Configuração Visual (Padronizada)
 const HEADER_IMAGE =
-  "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
+  "https://i.pinimg.com/736x/4d/68/8e/4d688edfeedd4bec17b856d2a2ad7241.jpg";
 const NEUTRAL_COLOR = 0x2f3136;
 
 module.exports = {

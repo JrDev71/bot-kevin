@@ -7,25 +7,29 @@ const {
   PermissionsBitField,
   ChannelType,
   EmbedBuilder,
+  ButtonStyle,
 } = require("discord.js");
 
 const { getVipData, updateVipData, addFriend } = require("../vipManager");
 const { BTN_TAG, BTN_CHANNEL, BTN_ADD_MEMBER } = require("../commands/vip");
+const logEmbed = require("../utils/logEmbed");
 
+// IDs Internos dos Modais
 const MODAL_TAG = "vip_modal_tag";
 const MODAL_CHANNEL = "vip_modal_channel";
 const MODAL_ADD_USER = "vip_modal_add_user";
 
 // CONFIG VISUAL
 const HEADER_IMAGE =
-  "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
-const NEUTRAL_COLOR = 0x2f3136;
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
 
+// Helper para respostas padronizadas
 const replyEmbed = (interaction, title, desc) => {
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(desc)
-    .setColor(NEUTRAL_COLOR)
+    .setColor(COLOR_NEUTRAL)
     .setImage(HEADER_IMAGE)
     .setTimestamp();
   return interaction.editReply({ embeds: [embed], content: null });
@@ -55,7 +59,7 @@ module.exports = async (interaction) => {
         new ActionRowBuilder().addComponents(
           new TextInputBuilder()
             .setCustomId("tag_color")
-            .setLabel("Cor Hex (Ex: #FFFFFF)")
+            .setLabel("Cor Hex")
             .setStyle(TextInputStyle.Short)
             .setRequired(false)
         )
@@ -93,13 +97,18 @@ module.exports = async (interaction) => {
     return true;
   }
 
-  // 2. PROCESSAMENTO DOS MODAIS
+  // 2. PROCESSAR MODAIS
   if (
     isModal &&
     [MODAL_TAG, MODAL_CHANNEL, MODAL_ADD_USER].includes(interaction.customId)
   ) {
     await interaction.deferReply({ ephemeral: true });
-    const vipData = getVipData(interaction.user.id);
+
+    // AWAIT OBRIGATÓRIO (Banco de Dados)
+    const vipData = await getVipData(interaction.user.id);
+    const logChannelId =
+      interaction.client.config.PD_LOG_CHANNEL_ID ||
+      interaction.client.config.LOG_CHANNEL_ID;
 
     if (!vipData)
       return replyEmbed(
@@ -115,7 +124,6 @@ module.exports = async (interaction) => {
         interaction.fields.getTextInputValue("tag_color") || "#FFFFFF";
       try {
         let role;
-        // Tenta buscar cargo existente
         if (vipData.customRoleId)
           role = await interaction.guild.roles
             .fetch(vipData.customRoleId)
@@ -126,10 +134,9 @@ module.exports = async (interaction) => {
           replyEmbed(
             interaction,
             "Sucesso",
-            `✅ Tag editada para **${tagName}**!`
+            `<:certo_froid:1443643346722754692> Tag editada para **${tagName}**!`
           );
         } else {
-          // Cria novo se não existir
           const anchorId = process.env.VIP_ANCHOR_ROLE_ID;
           const anchorRole = anchorId
             ? interaction.guild.roles.cache.get(anchorId)
@@ -143,14 +150,15 @@ module.exports = async (interaction) => {
             reason: `VIP: ${interaction.user.tag}`,
           });
 
-          // Atualiza dados e dono
           const member = await interaction.guild.members.fetch(
             interaction.user.id
           );
           await member.roles.add(role);
-          updateVipData(interaction.user.id, { customRoleId: role.id });
 
-          // Sincroniza canal se existir
+          // AWAIT (Banco de Dados)
+          await updateVipData(interaction.user.id, { customRoleId: role.id });
+
+          // Sincroniza permissão do canal se já existir
           if (vipData.customChannelId) {
             const ch = await interaction.guild.channels
               .fetch(vipData.customChannelId)
@@ -164,7 +172,7 @@ module.exports = async (interaction) => {
           replyEmbed(
             interaction,
             "Sucesso",
-            `✅ Tag **${tagName}** criada e vinculada!`
+            `<:certo_froid:1443643346722754692> Tag **${tagName}** criada e vinculada!`
           );
         }
       } catch (e) {
@@ -183,7 +191,7 @@ module.exports = async (interaction) => {
       const categoryId = process.env.VIP_CATEGORY_ID;
       const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
 
-      // DELETAR CANAL (CORRIGIDO)
+      // DELETAR CANAL
       if (channelName.toLowerCase() === "deletar") {
         if (vipData.customChannelId) {
           const ch = await interaction.guild.channels
@@ -191,22 +199,25 @@ module.exports = async (interaction) => {
             .catch(() => null);
           if (ch) {
             await ch.delete();
-            updateVipData(interaction.user.id, { customChannelId: null });
-            return replyEmbed(interaction, "Sucesso", "🗑️ Canal deletado.");
+            await updateVipData(interaction.user.id, { customChannelId: null }); // AWAIT
+            return replyEmbed(
+              interaction,
+              "Sucesso",
+              "<:vmc_lixeiraK:1443653159779041362> Canal deletado."
+            );
           } else {
-            // Canal já não existia no Discord, limpa o DB
-            updateVipData(interaction.user.id, { customChannelId: null });
+            await updateVipData(interaction.user.id, { customChannelId: null }); // AWAIT
             return replyEmbed(
               interaction,
               "Aviso",
-              "O canal não foi encontrado no servidor, mas removi o registro do seu VIP."
+              "Canal não encontrado, mas registro limpo."
             );
           }
         }
         return replyEmbed(
           interaction,
           "Erro",
-          "Você não tem canal registrado para deletar."
+          "Você não tem canal para deletar."
         );
       }
 
@@ -222,17 +233,19 @@ module.exports = async (interaction) => {
           replyEmbed(
             interaction,
             "Sucesso",
-            `✅ Canal renomeado para **${channelName}**.`
+            `<:certo_froid:1443643346722754692> Canal renomeado para **${channelName}**.`
           );
         } else {
           if (!categoryId)
             return replyEmbed(
               interaction,
               "Configuração",
-              "⚠️ Categoria VIP não configurada no servidor."
+              "<:am_avisoK:1443645307358544124> Categoria VIP não configurada no servidor."
             );
 
+          // DEFINIÇÃO DE PERMISSÕES (Lógica que você pediu)
           const overwrites = [
+            // Everyone: Não vê, não conecta
             {
               id: interaction.guild.id,
               deny: [
@@ -240,6 +253,7 @@ module.exports = async (interaction) => {
                 PermissionsBitField.Flags.Connect,
               ],
             },
+            // Dono: Vê, conecta e gerencia
             {
               id: interaction.user.id,
               allow: [
@@ -249,26 +263,22 @@ module.exports = async (interaction) => {
               ],
             },
           ];
+          // Verificados: Veem, mas não conectam
           if (verifiedRoleId)
             overwrites.push({
               id: verifiedRoleId,
               allow: [PermissionsBitField.Flags.ViewChannel],
               deny: [PermissionsBitField.Flags.Connect],
             });
-          if (vipData.customRoleId) {
-            // Verifica se a role existe antes de adicionar permissão
-            const r = await interaction.guild.roles
-              .fetch(vipData.customRoleId)
-              .catch(() => null);
-            if (r)
-              overwrites.push({
-                id: vipData.customRoleId,
-                allow: [
-                  PermissionsBitField.Flags.ViewChannel,
-                  PermissionsBitField.Flags.Connect,
-                ],
-              });
-          }
+          // Amigos (Tag): Veem e conectam
+          if (vipData.customRoleId)
+            overwrites.push({
+              id: vipData.customRoleId,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+              ],
+            });
 
           channel = await interaction.guild.channels.create({
             name: channelName,
@@ -276,11 +286,15 @@ module.exports = async (interaction) => {
             parent: categoryId,
             permissionOverwrites: overwrites,
           });
-          updateVipData(interaction.user.id, { customChannelId: channel.id });
+
+          // AWAIT (Banco de Dados)
+          await updateVipData(interaction.user.id, {
+            customChannelId: channel.id,
+          });
           replyEmbed(
             interaction,
             "Sucesso",
-            `✅ Canal **${channelName}** criado!`
+            `<:certo_froid:1443643346722754692> Canal **${channelName}** criado!`
           );
         }
       } catch (e) {
@@ -288,26 +302,27 @@ module.exports = async (interaction) => {
       }
     }
 
-    // --- C. ADD AMIGO (CORRIGIDO) ---
+    // --- C. ADD AMIGO ---
     else if (interaction.customId === MODAL_ADD_USER) {
       const friendId = interaction.fields.getTextInputValue("friend_id");
 
-      // Verificação rigorosa da Tag
       if (!vipData.customRoleId)
-        return replyEmbed(interaction, "Atenção", "❌ Crie sua tag primeiro.");
+        return replyEmbed(
+          interaction,
+          "Atenção",
+          "<:Nao:1443642030637977743> Crie sua tag primeiro."
+        );
 
-      // Busca a role no Discord para garantir que ela existe
+      // Busca a role para garantir que existe
       const role = await interaction.guild.roles
         .fetch(vipData.customRoleId)
         .catch(() => null);
-      if (!role) {
-        // Se a role sumiu do Discord, avisa o usuário
+      if (!role)
         return replyEmbed(
           interaction,
           "Erro Crítico",
-          "❌ Sua Tag não foi encontrada no servidor (talvez tenha sido deletada manualmente?). Crie-a novamente no painel."
+          "<:Nao:1443642030637977743> Sua Tag foi deletada do servidor. Crie-a novamente."
         );
-      }
 
       const friend = await interaction.guild.members
         .fetch(friendId)
@@ -316,25 +331,31 @@ module.exports = async (interaction) => {
         return replyEmbed(
           interaction,
           "Erro",
-          "❌ Usuário não encontrado no servidor."
+          "<:Nao:1443642030637977743> Usuário não encontrado no servidor."
         );
 
-      const res = addFriend(interaction.user.id, friendId);
-      if (!res.success) return replyEmbed(interaction, "Erro", `❌ ${res.msg}`);
+      // AWAIT (Banco de Dados)
+      const res = await addFriend(interaction.user.id, friendId);
+      if (!res.success)
+        return replyEmbed(
+          interaction,
+          "Erro",
+          `<:Nao:1443642030637977743> ${res.msg}`
+        );
 
       try {
         await friend.roles.add(role);
         replyEmbed(
           interaction,
           "Sucesso",
-          `✅ **${friend.user.tag}** recebeu sua tag VIP!`
+          `<:certo_froid:1443643346722754692> **${friend.user.tag}** recebeu sua tag VIP!`
         );
       } catch (e) {
         console.error(e);
         replyEmbed(
           interaction,
           "Erro",
-          "❌ Erro ao dar o cargo. Verifique se meu cargo está acima da sua Tag VIP."
+          "<:Nao:1443642030637977743> Erro ao dar o cargo. Verifique hierarquia."
         );
       }
     }

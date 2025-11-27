@@ -9,7 +9,7 @@ const COLOR_NEUTRAL = 0x2f3136;
 module.exports = {
   handleBotInfo: async (message) => {
     const infoEmbed = new EmbedBuilder()
-      .setTitle("🤖 MC KEVIN - Sistema Central")
+      .setTitle("<:robo1:1443677412498870434> MC KEVIN - Sistema Central")
       .setDescription(
         "Bot desenvolvido exclusivamente para gerenciamento, segurança e entretenimento deste servidor.\n" +
           "Abaixo estão os módulos ativos e suas funcionalidades."
@@ -21,7 +21,7 @@ module.exports = {
       )
       .addFields(
         {
-          name: "🛡️ Segurança Zero Trust",
+          name: "<:escudo:1443654659498840135> Segurança Zero Trust",
           value:
             "> **Anti-Nuke:** Proteção contra destruição de canais e bans em massa.\n" +
             "> **Anti-Spam:** Timeout automático para flood.\n" +
@@ -30,7 +30,7 @@ module.exports = {
           inline: false,
         },
         {
-          name: "🎛️ Gestão via Painéis (Staff)",
+          name: "<:control_knobes:1443678423351431218> Gestão via Painéis (Staff)",
           value:
             "> Gerenciamento visual sem comandos complexos:\n" +
             "> `k!mod` - Painel de Justiça (Punir, Limpar, Trancar).\n" +
@@ -39,7 +39,7 @@ module.exports = {
           inline: false,
         },
         {
-          name: "💎 Sistema VIP Self-Service",
+          name: "<:vd_diamanteK:1443648289068285972> Sistema VIP",
           value:
             "> Membros VIPs gerenciam seus próprios benefícios via `k!vip`:\n" +
             "> • Criar Tag Exclusiva e Canal de Voz Privado.\n" +
@@ -48,7 +48,7 @@ module.exports = {
           inline: false,
         },
         {
-          name: "🎮 Jogo Stop (Adedonha)",
+          name: "<:controle:1443678488870785044> Jogo Stop (Adedonha)",
           value:
             "> Jogo automático integrado ao chat:\n" +
             "> • Múltiplas rodadas e Placar Acumulado.\n" +

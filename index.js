@@ -1,10 +1,8 @@
 // index.js
-
-// Importações principais
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const http = require("http"); // Adicionado para o health check do Render
+const http = require("http"); // Workaround para Render
 const {
   Client,
   GatewayIntentBits,
@@ -12,26 +10,24 @@ const {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  Collection,
   Partials,
 } = require("discord.js");
 
-// Importação do Gerenciador VIP para checagem de validade
+// Importação do Gerenciador VIP (para checagem automática)
 const { checkExpiredVips } = require("./vipManager");
 
-// Carregar Variáveis de Ambiente
 const TOKEN = process.env.DISCORD_TOKEN;
 
 // Inicialização do Cliente
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers, // Necessário para ver quem entra/sai/vip
-    GatewayIntentBits.GuildBans, // Necessário para logs de ban
-    GatewayIntentBits.GuildVoiceStates, // Necessário para logs de voz
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildBans,
+    GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildPresences,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildMessageReactions, // Mantido caso queira usar reações em outros sistemas
     GatewayIntentBits.MessageContent,
   ],
   partials: [
@@ -43,21 +39,19 @@ const client = new Client({
   ],
 });
 
-// --- VARIÁVEIS DE MAPEAMENTO GLOBAL ---
+// --- CONFIGURAÇÕES GLOBAIS (client.config) ---
 client.config = {
-  // Verificação
+  // --- IDs Básicos ---
   VERIFIED_ROLE_ID: process.env.VERIFIED_ROLE_ID,
   APPROVER_ROLE_ID: process.env.APPROVER_ROLE_ID,
   SECONDARY_APPROVER_ROLE_ID: process.env.SECONDARY_APPROVER_ROLE_ID,
 
-  // Canais de Fluxo
+  // --- Canais ---
   APPROVAL_CHANNEL_ID: process.env.APPROVAL_CHANNEL_ID,
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
-  ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
-  ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID,
 
-  // Logs de Auditoria
+  // --- Logs de Auditoria ---
   MEMBER_JOIN_LEAVE_LOG_ID: process.env.MEMBER_JOIN_LEAVE_LOG_ID,
   MESSAGE_EDIT_LOG_ID: process.env.MESSAGE_EDIT_LOG_ID,
   MESSAGE_DELETE_LOG_ID: process.env.MESSAGE_DELETE_LOG_ID,
@@ -66,17 +60,18 @@ client.config = {
   VOICE_LOG_ID: process.env.VOICE_LOG_ID,
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
   PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID,
-  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID, // Log Geral
+  LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
 
-  // Role Mapping (Role Reaction)
-  ROLE_MAPPING: {
-    "1437889904406433974": "1437891203558277283",
-    "1437889927613517975": "1437891278690975878",
-  },
+  // --- IDs de Jogos (Auto-Role via Botão) ---
+  FREEFIRE_ROLE_ID: process.env.FREEFIRE_ROLE_ID,
+  VALORANT_ROLE_ID: process.env.VALORANT_ROLE_ID,
+  CS_ROLE_ID: process.env.CS_ROLE_ID,
+  ROBLOX_ROLE_ID: process.env.ROBLOX_ROLE_ID,
+  GTA_ROLE_ID: process.env.GTA_ROLE_ID,
+  MINECRAFT_ROLE_ID: process.env.MINECRAFT_ROLE_ID,
 };
 
-// --- CARREGAMENTO DE EVENTOS PRINCIPAIS ---
-
+// --- CARREGAMENTO DE EVENTOS ---
 const handleMessageCreate = require("./events/messageCreate");
 client.on("messageCreate", handleMessageCreate);
 
@@ -89,54 +84,59 @@ if (fs.existsSync(loggersPath)) {
   const loggerFiles = fs
     .readdirSync(loggersPath)
     .filter((file) => file.endsWith(".js"));
-
   for (const file of loggerFiles) {
-    const filePath = path.join(loggersPath, file);
     try {
-      const logger = require(filePath);
+      const logger = require(path.join(loggersPath, file));
       if (logger.name && logger.execute) {
         client.on(logger.name, (...args) => logger.execute(client, ...args));
-        console.log(`[LOGS] Módulo carregado: ${file}`);
+        console.log(`[LOGS] Carregado: ${file}`);
       }
     } catch (e) {
-      console.error(`[LOGS] Erro ao carregar ${file}:`, e);
+      console.error(`[LOGS] Erro em ${file}:`, e);
     }
   }
-} else {
-  console.warn("[LOGS] Pasta 'events/loggers' não encontrada.");
 }
 
-// --- POSTAGEM DO PAINEL DE VERIFICAÇÃO ---
+// --- FUNÇÃO: POSTAR PAINEL DE VERIFICAÇÃO (NO INÍCIO) ---
 async function postVerificationPanel(client) {
   const VERIFY_BUTTON_ID = "start_verification";
   const channel = client.channels.cache.get(
     client.config.VERIFICATION_CHANNEL_ID
   );
 
-  if (!channel) {
-    return console.error("Canal de verificação não encontrado.");
-  }
+  if (!channel)
+    return console.error(
+      "Canal de verificação não encontrado. Verifique o ID no .env."
+    );
 
-  const LOGO_URL =
-    "https://media.discordapp.net/attachments/1435040616831782922/1435059494228066445/3238061aac6396f0246f33fe01cb283c.jpg?width=450&height=442";
+  // Configuração Visual
+  const HEADER_IMAGE =
+    "https://i.pinimg.com/736x/32/5c/a9/325ca9de6228659f8f9ec5d14bc8fbb5.jpg";
+  const THUMBNAIL_URL =
+    "https://i.pinimg.com/736x/32/5c/a9/325ca9de6228659f8f9ec5d14bc8fbb5.jpg";
 
   const embed = new EmbedBuilder()
     .setTitle("✅ Verificação de Membro")
-    .setDescription("SÓ MLK BOM, OS MENO MAIS QUENTE!! FORA PANELEIROS")
-    .setColor(0x00ff00)
-    .setImage(LOGO_URL);
+    .setDescription("SÓ MLK BOM, OS MENO MAIS QUENTE!! FORA PANELEIROS.")
+    .setColor(0x2f3136)
+    .setThumbnail(THUMBNAIL_URL)
+    .setImage(HEADER_IMAGE);
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(VERIFY_BUTTON_ID)
-      .setLabel("Verificar")
-      .setStyle(ButtonStyle.Primary)
+      .setLabel("VERIFICAR")
+      .setStyle(ButtonStyle.Success)
+      .setEmoji("<:mov_ok:1439456247794634845>")
   );
 
   const messages = await channel.messages.fetch({ limit: 5 });
   if (
     !messages.some((m) =>
-      m.embeds.some((e) => e.title === "✅ Verificação de Membro")
+      m.embeds.some(
+        (e) =>
+          e.title === "<:certo_froid:1443643346722754692> Verificação de Membro"
+      )
     )
   ) {
     await channel.send({ embeds: [embed], components: [row] });
@@ -144,18 +144,13 @@ async function postVerificationPanel(client) {
   }
 }
 
-// --- HANDLERS DE ESTABILIDADE CRÍTICA ---
-process.on("uncaughtException", (err, origin) => {
-  console.error(`\n--- Erro Crítico (Uncaught Exception) ---`);
-  console.error(`Causa: ${origin}\nErro:`, err);
-  console.error(`------------------------------------------\n`);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error(`\n--- Promessa Rejeitada (Unhandled Rejection) ---`);
-  console.error(`Razão:`, reason);
-  console.error(`-------------------------------------------------\n`);
-});
+// --- HANDLERS DE ESTABILIDADE ---
+process.on("uncaughtException", (err) =>
+  console.error(`[CRÍTICO] Uncaught Exception:`, err)
+);
+process.on("unhandledRejection", (reason) =>
+  console.error(`[CRÍTICO] Unhandled Rejection:`, reason)
+);
 
 // --- EVENTO READY ---
 client.once("ready", async () => {
@@ -164,120 +159,23 @@ client.once("ready", async () => {
 
   await postVerificationPanel(client);
 
-  // 1. Força o fetch da mensagem de role reaction
-  const { ROLE_REACTION_MESSAGE_ID, ROLE_REACTION_CHANNEL_ID } = client.config;
-  if (ROLE_REACTION_MESSAGE_ID && ROLE_REACTION_CHANNEL_ID) {
-    const channel = client.channels.cache.get(ROLE_REACTION_CHANNEL_ID);
-    if (channel?.isTextBased()) {
-      try {
-        await channel.messages.fetch(ROLE_REACTION_MESSAGE_ID);
-        console.log(
-          `[SUCESSO] Mensagem de Role Reaction carregada na memória.`
-        );
-      } catch (err) {
-        console.error(
-          `[ERRO] Falha ao carregar mensagem de Role Reaction.`,
-          err
-        );
-      }
-    }
-  }
-
-  // 2. Inicia o verificador de VIPs expirados
+  // Inicia verificador de VIPs expirados (Database)
   console.log("[SISTEMA VIP] Iniciando verificador de validade...");
-  checkExpiredVips(client); // Roda imediatamente ao ligar
+  checkExpiredVips(client);
 
-  // Roda a cada 1 hora (3600 segundos * 1000 ms)
+  // Roda a cada 1 hora
   setInterval(() => {
     checkExpiredVips(client);
   }, 3600 * 1000);
 });
 
-// --- HANDLERS DE REAÇÃO (Role Reaction) ---
-client.on("messageReactionAdd", async (reaction, user) => {
-  if (user.bot) return;
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-
-  const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name; // Usa ID ou Nome
-
-  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) return;
-
-  const roleId = config.ROLE_MAPPING[emojiKey];
-  if (!roleId) return;
-
-  const member = reaction.message.guild.members.cache.get(user.id);
-  const role = reaction.message.guild.roles.cache.get(roleId);
-
-  if (member && role) {
-    try {
-      await member.roles.add(role);
-    } catch (err) {
-      console.error("Erro ao adicionar cargo:", err.message);
-    }
-  }
-});
-
-client.on("messageReactionRemove", async (reaction, user) => {
-  if (user.bot) return;
-  if (reaction.partial) await reaction.fetch();
-  if (reaction.message.partial) await reaction.message.fetch();
-
-  const config = reaction.client.config;
-  const emojiKey = reaction.emoji.id || reaction.emoji.name;
-
-  if (reaction.message.id !== config.ROLE_REACTION_MESSAGE_ID) return;
-
-  const roleId = config.ROLE_MAPPING[emojiKey];
-  if (!roleId) return;
-
-  const member = reaction.message.guild.members.cache.get(user.id);
-  const role = reaction.message.guild.roles.cache.get(roleId);
-
-  if (member && role && member.roles.cache.has(roleId)) {
-    try {
-      await member.roles.remove(role);
-    } catch (err) {
-      console.error("Erro ao remover cargo:", err.message);
-    }
-  }
-});
-
-// --- WORKAROUND PARA RENDER (HEALTH CHECK) ---
+// --- SERVER HTTP (Para o Render não desligar o bot) ---
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("MC KEVIN Bot is running and healthy!\n");
+  res.end("MC KEVIN Bot is Online!\n");
 });
-
 const port = process.env.PORT || 3000;
-
-server.listen(port, () => {
-  console.log(`Render health check server running on port ${port}`);
-});
-
-// --- CARREGAMENTO DE SEGURANÇA (ANTI-NUKE) ---
-const securityPath = path.join(__dirname, "events", "security");
-if (fs.existsSync(securityPath)) {
-  const securityFiles = fs
-    .readdirSync(securityPath)
-    .filter((file) => file.endsWith(".js"));
-
-  for (const file of securityFiles) {
-    const filePath = path.join(securityPath, file);
-    try {
-      const securityEvent = require(filePath);
-      if (securityEvent.name && securityEvent.execute) {
-        client.on(securityEvent.name, (...args) =>
-          securityEvent.execute(client, ...args)
-        );
-        console.log(`[SECURITY] Módulo carregado: ${file}`);
-      }
-    } catch (e) {
-      console.error(`[SECURITY] Erro ao carregar ${file}:`, e);
-    }
-  }
-}
+server.listen(port, () => console.log(`Render health check na porta ${port}`));
 
 // --- LOGIN ---
 client.login(TOKEN);

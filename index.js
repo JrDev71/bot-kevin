@@ -125,9 +125,9 @@ async function postVerificationPanel(client) {
 
   // Configuração Visual (Atualizada para combinar com o resto do bot)
   const HEADER_IMAGE =
-    "https://i.pinimg.com/736x/91/0a/a7/910aa7044a267c87fbd0f6b50ac8b692.jpg";
+    "https://i.pinimg.com/736x/4d/68/8e/4d688edfeedd4bec17b856d2a2ad7241.jpg";
   const THUMBNAIL_URL =
-    "https://i.pinimg.com/736x/91/0a/a7/910aa7044a267c87fbd0f6b50ac8b692.jpg";
+    "https://i.pinimg.com/736x/4d/68/8e/4d688edfeedd4bec17b856d2a2ad7241.jpg";
 
   // 1. Busca histórico para evitar duplicatas
   try {
@@ -156,7 +156,7 @@ async function postVerificationPanel(client) {
   const embed = new EmbedBuilder()
     .setTitle("<:certo_froid:1443643346722754692> KEVIN - VERIFICAÇÃO")
     .setDescription(
-      "SÓ MLK BOM, OS MENO MAIS QUENTE!! FORA PANELEIROS\n\nClique no botão abaixo para iniciar seu processo de acesso."
+      "SÓ MLK BOM, OS MENO MAIS QUENTE!!\n **FORA PANELEIROS**\n\nClique no botão abaixo para iniciar seu processo de acesso."
     )
     .setColor(0x2f3136)
     .setThumbnail(THUMBNAIL_URL)

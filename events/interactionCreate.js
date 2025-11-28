@@ -1,17 +1,25 @@
 // events/interactionCreate.js
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  PermissionsBitField,
+  ChannelType,
+} = require("discord.js");
 
 // --- IMPORTAÇÃO DOS HANDLERS (Módulos de Interação) ---
 const handleSlashCommand = require("../handlers/slashHandler"); // Slash Commands
-const handleVerification = require("../handlers/verificationHandler"); // Botão Verificar/Aprovar
+const handleVerification = require("../handlers/verificationHandler"); // Verificação
 const handleStopGame = require("../handlers/stopGameHandler"); // Jogo Stop
 const handleVip = require("../handlers/vipHandler"); // Painel VIP
+const handleBooster = require("../handlers/boosterHandler"); // Painel Booster (NOVO)
 const handleChannelManagement = require("../handlers/channelHandler"); // Painel de Canais (Infra)
 const handleModInteractions = require("../handlers/modHandler"); // Painel de Moderação (Justiça)
 const handleGameRoles = require("../handlers/gameRoleHandler"); // Painel de Jogos (Auto-Role)
-const handleBooster = require("../handlers/boosterHandler"); // Import
-
-// ... (dentro do module.exports)
-if (await handleBooster(interaction)) return;
 
 // O Handler de Gestão de Cargos (k!cargo) está dentro do arquivo de comando
 const { handleRoleInteractions } = require("../commands/rolePanel");
@@ -30,25 +38,25 @@ module.exports = async (interaction) => {
     // 2. Sistema de Verificação (Entrada)
     if (await handleVerification(interaction)) return;
 
-    // 3. Jogo Stop (Revisão e Botões)
+    // 3. Tenta tratar Jogo Stop
     if (await handleStopGame(interaction)) return;
 
-    // 4. Sistema VIP (Painel e Configuração)
+    // 4. Tenta tratar Sistema VIP
     if (await handleVip(interaction)) return;
 
-    // 5. Painel de Infraestrutura/Canais (k!canal)
-    if (await handleChannelManagement(interaction)) return;
-
-    // 6. Painel de Moderação (k!mod)
-    if (await handleModInteractions(interaction)) return;
-
-    // 7. Seleção de Jogos (Auto-Role / k!jogos)
-    if (await handleGameRoles(interaction)) return;
-
-    // Sistema VIP BOOSTER
+    // 5. Tenta tratar Sistema Booster (NOVO)
     if (await handleBooster(interaction)) return;
 
-    // 8. Painel de Gestão de Cargos (k!cargo)
+    // 6. Painel de Infraestrutura/Canais (k!canal)
+    if (await handleChannelManagement(interaction)) return;
+
+    // 7. Painel de Moderação (k!mod)
+    if (await handleModInteractions(interaction)) return;
+
+    // 8. Seleção de Jogos (Auto-Role / k!jogos)
+    if (await handleGameRoles(interaction)) return;
+
+    // 9. Painel de Gestão de Cargos (k!cargo)
     // Este handler específico retorna false se não processar
     try {
       if ((await handleRoleInteractions(interaction)) !== false) return;

@@ -8,6 +8,10 @@ const handleVip = require("../handlers/vipHandler"); // Painel VIP
 const handleChannelManagement = require("../handlers/channelHandler"); // Painel de Canais (Infra)
 const handleModInteractions = require("../handlers/modHandler"); // Painel de Moderação (Justiça)
 const handleGameRoles = require("../handlers/gameRoleHandler"); // Painel de Jogos (Auto-Role)
+const handleBooster = require("../handlers/boosterHandler"); // Import
+
+// ... (dentro do module.exports)
+if (await handleBooster(interaction)) return;
 
 // O Handler de Gestão de Cargos (k!cargo) está dentro do arquivo de comando
 const { handleRoleInteractions } = require("../commands/rolePanel");
@@ -40,6 +44,9 @@ module.exports = async (interaction) => {
 
     // 7. Seleção de Jogos (Auto-Role / k!jogos)
     if (await handleGameRoles(interaction)) return;
+
+    // Sistema VIP BOOSTER
+    if (await handleBooster(interaction)) return;
 
     // 8. Painel de Gestão de Cargos (k!cargo)
     // Este handler específico retorna false se não processar

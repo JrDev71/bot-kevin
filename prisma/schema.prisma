@@ -44,3 +44,20 @@ model Panela {
 model Blacklist {
   userId String @id @unique
 }
+
+// --- TABELA BOOSTER (NOVO) ---
+model Booster {
+  userId          String   @id @unique
+  since           DateTime @default(now())
+  customRoleId    String?  // ID da Tag do Booster
+  customChannelId String?  // ID do Canal do Booster
+  
+  friends         BoosterFriend[]
+}
+
+model BoosterFriend {
+  friendId String @id @unique
+  ownerId  String
+  
+  owner    Booster @relation(fields: [ownerId], references: [userId], onDelete: Cascade)
+}

@@ -166,7 +166,7 @@ async function postVerificationPanel(client) {
     new ButtonBuilder()
       .setCustomId(VERIFY_BUTTON_ID)
       .setLabel("Verificar")
-      .setStyle(ButtonStyle.Success)
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji("<:mov_ok:1439456247794634845>")
   );
 

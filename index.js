@@ -158,7 +158,7 @@ async function postVerificationPanel(client) {
     .setDescription(
       "SÓ MLK BOM, OS MENO MAIS QUENTE!!\n **FORA PANELEIROS**\n\nClique no botão abaixo para iniciar seu processo de acesso."
     )
-    .setColor(0x2f3136)
+    .setColor(0x007fff)
     .setThumbnail(THUMBNAIL_URL)
     .setImage(HEADER_IMAGE);
 

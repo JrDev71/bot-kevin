@@ -111,7 +111,7 @@ module.exports = {
 
   // --- SISTEMA DE ITENS (CRIME) ---
 
-  // Função que estava faltando ou mal exportada
+  // ESTA É A FUNÇÃO QUE ESTAVA FALTANDO OU COM ERRO
   buyItem: async (userId, guildId, itemPrice, itemId) => {
     const acc = await module.exports.getAccount(userId, guildId);
 

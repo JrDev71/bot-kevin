@@ -1,11 +1,18 @@
 // commands/crime.js
 const { EmbedBuilder } = require("discord.js");
+// Importação corrigida com buyItem
 const {
   getAccount,
   addMoney,
   removeMoney,
   hasItem,
+  buyItem,
 } = require("../economyManager");
+
+// CONFIG VISUAL
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
 
 // Configuração dos Itens (Preços e IDs)
 const SHOP_ITEMS = {
@@ -29,6 +36,22 @@ const SHOP_ITEMS = {
 // Configuração de Risco
 const JAIL_TIME_MS = 5 * 60 * 1000; // 5 Minutos de prisão se falhar
 
+// Helper para Embeds Rápidos
+const createResponseEmbed = (
+  title,
+  description,
+  color = COLOR_NEUTRAL,
+  image = null
+) => {
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(color)
+    .setTimestamp();
+  if (image) embed.setImage(image);
+  return embed;
+};
+
 module.exports = {
   SHOP_ITEMS,
 
@@ -41,7 +64,8 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle("<:lojaemoji:1446250117337452544> Loja do Gueto")
         .setDescription("Compre itens para melhorar seus corres.")
-        .setColor(0x00ff00);
+        .setColor(0x00ff00)
+        .setImage(HEADER_IMAGE); // Banner adicionado
 
       for (const [id, item] of Object.entries(SHOP_ITEMS)) {
         embed.addFields({
@@ -55,47 +79,90 @@ module.exports = {
     // --- k!comprar <item> ---
     if (command === "comprar") {
       const itemId = args[0]?.toLowerCase();
-      const item = Object.entries(SHOP_ITEMS).find(
+      const itemEntry = Object.entries(SHOP_ITEMS).find(
         ([key, val]) =>
           key === itemId || val.name.toLowerCase().includes(itemId)
       );
 
-      if (!item)
-        return message.reply(
-          "<:Nao:1443642030637977743> Item não encontrado. Veja a `k!loja`."
-        );
+      if (!itemEntry) {
+        return message.channel.send({
+          embeds: [
+            createResponseEmbed(
+              null,
+              "<:Nao:1443642030637977743> Item não encontrado. Veja a `k!loja`.",
+              0xff0000
+            ),
+          ],
+        });
+      }
 
-      const { buyItem } = require("../economyManager"); // Import tardio para evitar ciclo
-      const res = await buyItem(userId, guildId, item[1].price, item[0]);
+      const [key, item] = itemEntry;
 
-      if (res.success)
-        return message.reply(`✅ Você comprou **${item[1].name}**!`);
-      return message.reply(`<:Nao:1443642030637977743> ${res.msg}`);
+      // Chama buyItem do economyManager
+      const res = await buyItem(userId, guildId, item.price, key);
+
+      if (res.success) {
+        return message.channel.send({
+          embeds: [
+            createResponseEmbed(
+              null,
+              `✅ Você comprou **${item.name}**!`,
+              0x00ff00
+            ),
+          ],
+        });
+      }
+      return message.channel.send({
+        embeds: [
+          createResponseEmbed(
+            null,
+            `<:Nao:1443642030637977743> ${res.msg}`,
+            0xff0000
+          ),
+        ],
+      });
     }
 
     // --- k!roubar @user (O DIFERENCIAL) ---
     if (command === "roubar" || command === "rob") {
       const target = message.mentions.users.first();
+
       if (!target)
-        return message.reply("<:Nao:1443642030637977743> Mencione a vítima.");
-      if (target.id === userId) return message.reply("Vai se roubar?");
-      if (target.bot) return message.reply("Não pode roubar robôs.");
+        return message.channel.send({
+          embeds: [
+            createResponseEmbed(
+              null,
+              "<:Nao:1443642030637977743> Mencione a vítima."
+            ),
+          ],
+        });
+      if (target.id === userId)
+        return message.channel.send({
+          embeds: [createResponseEmbed(null, "Vai se roubar?")],
+        });
+      if (target.bot)
+        return message.channel.send({
+          embeds: [createResponseEmbed(null, "Não pode roubar robôs.")],
+        });
 
       const attackerAcc = await getAccount(userId, guildId);
       const victimAcc = await getAccount(target.id, guildId);
 
-      if (victimAcc.wallet < 100)
-        return message.reply(
-          "<:Nao:1443642030637977743> Essa pessoa está DURA, nem vale a pena."
-        );
+      if (victimAcc.wallet < 100) {
+        return message.channel.send({
+          embeds: [
+            createResponseEmbed(
+              null,
+              "<:Nao:1443642030637977743> Essa pessoa está DURA, nem vale a pena."
+            ),
+          ],
+        });
+      }
 
       // Verifica Inventários
       const hasGun = await hasItem(userId, guildId, "gun");
       const hasVest = await hasItem(target.id, guildId, "vest");
-      const hasLock = await hasItem(target.id, guildId, "lock");
-
-      // Se a vítima tem cadeado, o roubo falha e o cadeado quebra
-      /* (Lógica de quebrar item seria adicionada aqui no removeInventory, simplificando para o exemplo) */
+      // const hasLock = await hasItem(target.id, guildId, "lock"); // Lógica futura
 
       // Cálculo da Chance (Base 40%)
       let chance = 40;
@@ -123,6 +190,7 @@ module.exports = {
                 `**${message.author.username}** enquadrou **${target.username}** e levou **${amount} Kevins**!`
               )
               .setColor(0x00ff00)
+              .setImage(HEADER_IMAGE)
               .setFooter({ text: `Chance: ${chance}% | Dado: ${roll}` }),
           ],
         });

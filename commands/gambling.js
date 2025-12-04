@@ -115,7 +115,7 @@ module.exports = {
       await removeMoney(userId, guildId, bet);
 
       // Cria o tabuleiro (0 = diamante, 1 = bomba)
-      // CORREÇÃO: Grid 4x4 = 16 posições
+      // Grid 4x4 = 16 posições
       let board = Array(16).fill(0);
       let bombsPlaced = 0;
       while (bombsPlaced < bombs) {
@@ -155,9 +155,7 @@ module.exports = {
       const cashoutRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("mines_cashout")
-          .setLabel(
-            "<:sacodenotaemoji:1446230070552432771> SAIR E PEGAR O DINHEIRO"
-          ) // Pode por emoji custom aqui se quiser
+          .setLabel("💰 SAIR E PEGAR O DINHEIRO")
           .setStyle(ButtonStyle.Success)
       );
       rows.push(cashoutRow);

@@ -74,3 +74,14 @@ model Economy {
 
   @@unique([userId, guildId])
 }
+
+// --- SISTEMA DE ITENS ---
+model Inventory {
+  id        Int     @id @default(autoincrement())
+  userId    String
+  guildId   String
+  itemId    String  // Ex: "gun", "shield", "lock"
+  quantity  Int     @default(1)
+
+  @@unique([userId, guildId, itemId])
+}

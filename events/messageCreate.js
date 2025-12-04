@@ -44,6 +44,7 @@ const { sendGameRolesPanel } = require("../commands/gameRoles"); // k!roles (Jog
 const { handleBoosterPanel } = require("../commands/booster"); // k!booster <--- ADICIONADO
 const { handleEconomy } = require("../commands/economy");
 const { handleGambling } = require("../commands/gambling");
+const { handleCrime } = require("../commands/crime");
 
 const PREFIX = "k!";
 
@@ -232,6 +233,11 @@ module.exports = async (message) => {
 
   if (["slot", "slots", "mines"].includes(command)) {
     return handleGambling(message, command, args);
+  }
+
+  // --- CRIME & LOJA ---
+  if (["loja", "comprar", "roubar", "rob"].includes(command)) {
+    return handleCrime(message, command, args);
   }
 
   // --- JOGO STOP ---

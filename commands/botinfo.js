@@ -3,16 +3,16 @@ const { EmbedBuilder } = require("discord.js");
 
 // CONFIG VISUAL PADRÃO
 const HEADER_IMAGE =
-  "https://i.pinimg.com/736x/80/aa/bc/80aabcdc9d61a5e0e79ed6383de84342.jpg";
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
 const COLOR_NEUTRAL = 0x2f3136;
 
 module.exports = {
   handleBotInfo: async (message) => {
     const infoEmbed = new EmbedBuilder()
-      .setTitle("<:robo1:1443677412498870434> MC KEVIN - Sistema Central")
+      .setTitle("🤖 MC KEVIN - Sistema Central")
       .setDescription(
-        "Bot desenvolvido exclusivamente para gerenciamento, segurança e entretenimento deste servidor.\n" +
-          "Abaixo estão os módulos ativos e suas funcionalidades."
+        "Bot exclusivo de gerenciamento, segurança e economia.\n" +
+          "Todos os sistemas são integrados e salvos em nuvem."
       )
       .setColor(COLOR_NEUTRAL)
       .setImage(HEADER_IMAGE)
@@ -21,60 +21,44 @@ module.exports = {
       )
       .addFields(
         {
-          name: "<:escudo:1443654659498840135> Segurança Zero Trust",
+          name: "💰 Economia & Cassino",
           value:
-            "> **Anti-Nuke:** Proteção contra destruição de canais e bans em massa.\n" +
-            "> **Anti-Spam:** Timeout automático para flood.\n" +
-            "> **Chat Blindado:** Bloqueio de links e menções (`@everyone`/`@here`).\n" +
-            "> **Listas de Acesso:** Sistema de Panela (Anti-Ban) e Blacklist.",
+            "> **Sistema Bancário:** Carteira, Banco e Transferências (Pix).\n" +
+            "> **Jobs:** Comandos de `Daily` e `Work` com cooldown.\n" +
+            "> **Jogos de Azar:** `Slots` (Caça-níquel) e `Mines` (Campo Minado) 100% interativo.",
           inline: false,
         },
         {
-          name: "<:control_knobes:1443678423351431218> Gestão via Painéis (Staff)",
+          name: "🛡️ Segurança Zero Trust",
           value:
-            "> Gerenciamento visual sem comandos complexos:\n" +
-            "> `k!mod` - Painel de Justiça (Punir, Limpar, Trancar).\n" +
-            "> `k!canal` - Infraestrutura (Criar/Editar canais com permissão automática).\n" +
-            "> `k!cargo` - Gestão de Hierarquia (Criar/Editar cargos).",
+            "> **Anti-Nuke & Anti-Raid:** Proteção automática contra destruição.\n" +
+            "> **Chat Blindado:** Anti-Link, Anti-Spam e Filtro de Menções.\n" +
+            "> **Listas:** Blacklist (Ban na entrada) e Panela (Imunidade).",
           inline: false,
         },
         {
-          name: "<:vd_diamanteK:1443648289068285972> Sistema VIP",
+          name: "💎 Sistema VIP & PD",
           value:
-            "> Membros VIPs gerenciam seus próprios benefícios via `k!vip`:\n" +
-            "> • Criar Tag Exclusiva e Canal de Voz Privado.\n" +
-            "> • Adicionar amigos à Tag/Sala (Ilimitado).\n" +
-            "> • Sistema de expiração e renovação automática.",
+            "> **VIP Self-Service:** O usuário cria sua Tag e Canal sozinho.\n" +
+            "> **Gerenciamento:** Adição ilimitada de amigos na Tag.\n" +
+            "> **Primeira Dama:** Sistema exclusivo de cargos especiais.",
           inline: false,
         },
         {
-          name: "<:controle:1443678488870785044> Jogo Stop (Adedonha)",
+          name: "🎛️ Gestão por Painéis",
           value:
-            "> Jogo automático integrado ao chat:\n" +
-            "> • Múltiplas rodadas e Placar Acumulado.\n" +
-            "> • Validação por Votação/Revisão da Staff.\n" +
-            "> • Comandos: `k!stop` (Iniciar) e `k!parar`.",
+            "> A Staff não usa comandos complexos, usa Painéis Visuais:\n" +
+            "> `Moderação` • `Infraestrutura` • `Cargos` • `Verificação`.",
           inline: false,
         },
         {
-          name: "📝 Auditoria & Logs",
-          value:
-            "> Registro total de ações em canais dedicados:\n" +
-            "> Voz, Mensagens, Cargos, Entradas/Saídas e Punições.",
-          inline: false,
-        },
-        {
-          name: "🔧 Utilitários",
-          value:
-            "> `k!membros @cargo` - Lista quem possui um cargo.\n" +
-            "> `k!av @user` - Visualiza o avatar.\n" +
-            "> `k!pd` - Sistema de Primeira Dama.\n" +
-            "> `k!help` - Lista completa de comandos.",
+          name: "📝 Auditoria Total",
+          value: "> Logs detalhados de Voz, Mensagens, Punições e Edições.",
           inline: false,
         }
       )
       .setFooter({
-        text: "Sistema Privado v3.0",
+        text: "Versão 4.0 Stable • Database PostgreSQL",
         iconURL: message.guild.iconURL(),
       })
       .setTimestamp();

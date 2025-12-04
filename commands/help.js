@@ -2,69 +2,63 @@
 const { EmbedBuilder } = require("discord.js");
 
 const PREFIX = "k!";
+const HEADER_IMAGE =
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
+const COLOR_NEUTRAL = 0x2f3136;
 
 module.exports = {
   handleHelp: async (message) => {
     const helpEmbed = new EmbedBuilder()
-      .setTitle("🤖 Manual de Comandos do MC KEVIN")
+      .setTitle("🤖 Manual de Comandos")
       .setDescription(
-        `Aqui está a lista completa de funcionalidades. O prefixo é \`${PREFIX}\`.`
+        `Lista completa de funcionalidades do servidor.\nO prefixo é \`${PREFIX}\`.`
       )
-      .setColor(0x3498db) // Azul
+      .setColor(COLOR_NEUTRAL)
+      .setImage(HEADER_IMAGE)
       .setThumbnail(message.client.user.displayAvatarURL())
       .addFields(
         {
-          name: "🎮 Jogo Stop (Adedonha)",
+          name: "💰 Economia & Cassino",
           value:
-            `\`${PREFIX}stop\` - Inicia uma partida (3 rodadas).\n` +
-            `\`${PREFIX}parar\` - Encerra a rodada atual antecipadamente.\n` +
-            `*Como jogar: Envie suas respostas separadas por vírgula assim que a rodada começar (Ex: Nome, Cor, Fruta).*`,
+            `\`${PREFIX}atm\` - Ver seu saldo (Carteira e Banco).\n` +
+            `\`${PREFIX}daily\` - Resgatar recompensa diária.\n` +
+            `\`${PREFIX}work\` - Trabalhar para ganhar dinheiro.\n` +
+            `\`${PREFIX}pay @user <valor>\` - Transferir dinheiro.\n` +
+            `\`${PREFIX}rank\` - Ver o Ranking dos mais ricos.\n` +
+            `\`${PREFIX}slot <valor>\` - Apostar no Caça-Níquel.\n` +
+            `\`${PREFIX}mines <valor> [bombas]\` - Jogar Campo Minado.`,
         },
         {
           name: "💎 Sistema VIP",
           value:
-            `**Membros VIP:**\n` +
-            `\`${PREFIX}vip\` - Abre seu Painel de Controle (Criar Tag/Canal).\n` +
-            `\`${PREFIX}addvip @amigo\` - Adiciona amigo à sua Tag.\n` +
-            `\`${PREFIX}remvip @amigo\` - Remove amigo da sua Tag.\n\n` +
-            `**Administração VIP:**\n` +
-            `\`${PREFIX}setvip @user [dias]\` - Dá o VIP (Padrão 30 dias).\n` +
-            `\`${PREFIX}addtime @user <dias>\` - Renova/Adiciona tempo.\n` +
-            `\`${PREFIX}vipadm rem @user\` - Remove VIP e deleta benefícios.`,
+            `\`${PREFIX}vip\` - Seu Painel (Criar Tag/Canal).\n` +
+            `\`${PREFIX}addvip @amigo\` - Adicionar amigo à Tag.\n` +
+            `\`${PREFIX}remvip @amigo\` - Remover amigo da Tag.\n` +
+            `*Staff:* \`${PREFIX}setvip\`, \`${PREFIX}addtime\`, \`${PREFIX}vipadm\`.`,
         },
         {
-          name: "🛡️ Moderação & Canais",
+          name: "🎮 Jogo Stop",
           value:
-            `\`${PREFIX}ban @user [motivo]\` - Banir usuário.\n` +
-            `\`${PREFIX}unban <id>\` - Desbanir pelo ID.\n` +
-            `\`${PREFIX}kick @user [motivo]\` - Expulsar usuário.\n` +
-            `\`${PREFIX}mute @user <tempo> [motivo]\` - Castigo (Ex: 10m, 1h).\n` +
-            `\`${PREFIX}unmute @user\` - Remover castigo.\n` +
-            `\`${PREFIX}lock\` / \`${PREFIX}unlock\` - Trancar/Destrancar canal atual.\n` +
-            `\`${PREFIX}lockall\` - 🚨 Tranca TODOS os canais (Anti-Raid).\n` +
-            `\`${PREFIX}nuke\` - Recria o canal (Limpa histórico).`,
+            `\`${PREFIX}stop\` - Iniciar partida.\n` +
+            `\`${PREFIX}parar\` - Encerrar rodada.\n` +
+            `*Responda rápido no chat quando a letra sair!*`,
         },
         {
-          name: "👮 Segurança & Prisão",
+          name: "🛡️ Segurança & Moderação",
           value:
-            `\`${PREFIX}prender @user\` - Envia para a prisão (Cargo Jail).\n` +
-            `\`${PREFIX}soltar @user\` - Solta da prisão.\n` +
-            `\`${PREFIX}panela add/rem/list\` - Gerencia usuários imunes a ban.\n` +
-            `\`${PREFIX}blacklist add/rem/list\` - Gerencia Lista Negra (Auto-Ban).`,
+            `\`${PREFIX}mod\` - **Painel de Justiça** (Ban/Kick/Mute).\n` +
+            `\`${PREFIX}canal\` - **Painel de Infra** (Criar Canais).\n` +
+            `\`${PREFIX}cargo\` - **Painel de Cargos** (Criar Cargos).\n` +
+            `\`${PREFIX}lockall\` / \`${PREFIX}unlockall\` - Trancar/Destrancar Servidor.\n` +
+            `\`${PREFIX}panela\` / \`${PREFIX}blacklist\` - Listas de Proteção.`,
         },
         {
-          name: "👑 Primeira Dama (PD)",
+          name: "⚙️ Admin & Outros",
           value:
-            `\`${PREFIX}pd\` - Lista as PDs atuais.\n` +
-            `\`${PREFIX}setpd @user\` - Define uma nova PD.\n` +
-            `\`${PREFIX}removepd @user\` - Remove uma PD.`,
-        },
-        {
-          name: "⚙️ Outros / Setup",
-          value:
-            `\`${PREFIX}av [@user]\` - Ver avatar grande.\n` +
-            `\`${PREFIX}roles\` - Posta o Painel de Registro.\n` +
-            `\`${PREFIX}repeat <texto>\` - O bot fala por você.`,
+            `\`${PREFIX}roles\` - Painel de Auto-Role (Jogos).\n` +
+            `\`${PREFIX}eco add/rem @user <valor>\` - Gerenciar saldo de membros.\n` +
+            `\`${PREFIX}av @user\` - Ver avatar.\n` +
+            `\`${PREFIX}pd\` - Sistema de Primeira Dama.`,
         }
       )
       .setFooter({

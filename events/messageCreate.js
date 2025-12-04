@@ -41,6 +41,7 @@ const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de
 const { handleModPanel } = require("../commands/modPanel"); // Painel de Moderação
 const { sendGameRolesPanel } = require("../commands/gameRoles"); // Painel de Jogos (Auto-Role)
 const { handleBoosterPanel } = require("../commands/booster");
+const { handleVoice } = require("../commands/voice");
 
 const PREFIX = "k!";
 
@@ -192,6 +193,10 @@ module.exports = async (message) => {
   if (command === "repeat") return handleRepeat(message, args);
   if (command === "booster" || command === "boost") {
     return handleBoosterPanel(message);
+  }
+  // --- SISTEMA DE VOZ (BOT) ---
+  if (["join", "entrar", "leave", "sair"].includes(command)) {
+    return handleVoice(message, args, command);
   }
   if (["membros", "listmembers", "list"].includes(command))
     return handleListMembers(message, args); // --- PAINEL DE JOGOS (AUTO-ROLE) ---

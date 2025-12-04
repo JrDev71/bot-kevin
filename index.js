@@ -4,7 +4,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const path = require("path");
-const http = require("http"); // Health check do Render
+const http = require("http");
 const {
   Client,
   GatewayIntentBits,
@@ -13,10 +13,11 @@ const {
   ButtonStyle,
   EmbedBuilder,
   Partials,
+  ActivityType, // <--- Importante para o status
 } = require("discord.js");
 
 // Importação do Gerenciador VIP
-const { checkExpiredVips } = require("./vipManager");
+const { checkExpiredVips } = require("./vipManager"); // <--- ESTA IMPORTAÇÃO ESTAVA FALTANDO
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
@@ -53,7 +54,7 @@ client.config = {
   APPROVED_LOG_CHANNEL_ID: process.env.APPROVED_LOG_CHANNEL_ID,
   VERIFICATION_CHANNEL_ID: process.env.VERIFICATION_CHANNEL_ID,
 
-  // Reaction Roles (Legado/Backup)
+  // Reaction Roles Legado
   ROLE_REACTION_CHANNEL_ID: process.env.ROLE_REACTION_CHANNEL_ID,
   ROLE_REACTION_MESSAGE_ID: process.env.ROLE_REACTION_MESSAGE_ID,
 
@@ -76,7 +77,11 @@ client.config = {
   GTA_ROLE_ID: process.env.GTA_ROLE_ID,
   MINECRAFT_ROLE_ID: process.env.MINECRAFT_ROLE_ID,
 
-  // Mapeamento Antigo (Se ainda usado)
+  // Booster (Novos)
+  BOOSTER_CATEGORY_ID: process.env.BOOSTER_CATEGORY_ID,
+  BOOSTER_ANCHOR_ROLE_ID: process.env.BOOSTER_ANCHOR_ROLE_ID,
+
+  // Mapeamento Antigo
   ROLE_MAPPING: {
     "1437889904406433974": "1437891203558277283",
     "1437889927613517975": "1437891278690975878",
@@ -90,7 +95,7 @@ client.on("messageCreate", handleMessageCreate);
 const handleInteractionCreate = require("./events/interactionCreate");
 client.on("interactionCreate", handleInteractionCreate);
 
-// --- CARREGAMENTO DE LOGGERS (AUDITORIA) ---
+// --- CARREGAMENTO DE LOGGERS ---
 const loggersPath = path.join(__dirname, "events", "loggers");
 if (fs.existsSync(loggersPath)) {
   const loggerFiles = fs
@@ -106,24 +111,18 @@ if (fs.existsSync(loggersPath)) {
       console.error(`[LOGS] Erro em ${file}:`, e);
     }
   }
-  console.log(`[LOGS] Módulos de auditoria carregados.`);
-} else {
-  console.warn("[LOGS] Pasta 'events/loggers' não encontrada.");
+  console.log(`[LOGS] Módulos carregados.`);
 }
 
-// --- FUNÇÃO: POSTAR PAINEL DE VERIFICAÇÃO (LÓGICA INTELIGENTE) ---
+// --- FUNÇÃO: POSTAR PAINEL DE VERIFICAÇÃO ---
 async function postVerificationPanel(client) {
   const VERIFY_BUTTON_ID = "start_verification";
   const channel = client.channels.cache.get(
     client.config.VERIFICATION_CHANNEL_ID
   );
 
-  if (!channel)
-    return console.error(
-      "Canal de verificação não encontrado. Verifique o ID no .env."
-    );
+  if (!channel) return console.error("Canal de verificação não encontrado.");
 
-  // Configuração Visual (Atualizada para combinar com o resto do bot)
   const HEADER_IMAGE =
     "https://i.pinimg.com/736x/4d/68/8e/4d688edfeedd4bec17b856d2a2ad7241.jpg";
   const THUMBNAIL_URL =
@@ -132,8 +131,6 @@ async function postVerificationPanel(client) {
   // 1. Busca histórico para evitar duplicatas
   try {
     const messages = await channel.messages.fetch({ limit: 50 });
-
-    // Verifica se já existe uma mensagem MINHA com o botão de verificação
     const panelExists = messages.find(
       (m) =>
         m.author.id === client.user.id &&
@@ -143,13 +140,11 @@ async function postVerificationPanel(client) {
     );
 
     if (panelExists) {
-      console.log(
-        `[VERIFICAÇÃO] Painel já existe (ID: ${panelExists.id}). Nenhuma ação necessária.`
-      );
+      console.log(`[VERIFICAÇÃO] Painel já existe. Nenhuma ação necessária.`);
       return;
     }
   } catch (e) {
-    console.error("Erro ao verificar mensagens antigas:", e);
+    console.error(e);
   }
 
   // 2. Se não existe, cria o novo
@@ -171,7 +166,7 @@ async function postVerificationPanel(client) {
   );
 
   await channel.send({ embeds: [embed], components: [row] });
-  console.log("[VERIFICAÇÃO] Novo painel postado com sucesso.");
+  console.log("[VERIFICAÇÃO] Novo painel postado.");
 }
 
 // --- HANDLERS DE ESTABILIDADE ---
@@ -185,38 +180,37 @@ process.on("unhandledRejection", (reason) =>
 // --- EVENTO READY ---
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
-  console.log(`[STATUS] Bot pronto para receber comandos.`);
+  console.log(`[STATUS] Bot pronto.`);
+
+  // Posta painel APÓS estar pronto
+  await postVerificationPanel(client);
+
+  // Inicia VIP APÓS estar pronto
+  console.log("[SISTEMA VIP] Iniciando verificador...");
+  checkExpiredVips(client);
+  setInterval(() => {
+    checkExpiredVips(client);
+  }, 3600 * 1000);
+
   // --- STATUS ROTATIVO ---
   const activities = [
-    { name: `🚨 Segurança`, type: 3 }, // 3 = Watching (Assistindo)
-    { name: `💎 Gerenciamento`, type: 2 }, // 2 = Listening (Ouvindo)
-    { name: `🎮 Plato Hot`, type: 0 }, // 0 = Playing (Jogando)
-    { name: `🍀 Melhor que ta tendo`, type: 5 }, // 5 = Competing (Competindo)
+    { name: `🚨 Segurança`, type: ActivityType.Watching },
+    { name: `💎 Gerenciamento`, type: ActivityType.Listening },
+    { name: `🎮 Plato Hot`, type: ActivityType.Playing },
+    { name: `🍀 Melhor que ta tendo`, type: ActivityType.Competing },
   ];
 
   let i = 0;
   setInterval(() => {
-    // Atualiza a atividade
     client.user.setPresence({
       activities: [{ name: activities[i].name, type: activities[i].type }],
       status: "online",
     });
-
-    // Passa para a próxima
     i = ++i % activities.length;
-  }, 10000); // Troca a cada 10 segundos
+  }, 10000);
 });
 
-await postVerificationPanel(client);
-
-// Inicia verificador de VIPs (Database)
-console.log("[SISTEMA VIP] Iniciando verificador de validade...");
-checkExpiredVips(client);
-setInterval(() => {
-  checkExpiredVips(client);
-}, 3600 * 1000);
-
-// --- SERVER HTTP (Para o Render) ---
+// --- SERVER HTTP ---
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("MC KEVIN Bot is Online!\n");

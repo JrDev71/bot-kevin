@@ -13,11 +13,10 @@ const COLOR_CASINO = 0xf1c40f; // Dourado
 const CURRENCY = "Kevins";
 
 // Cache para o jogo Mines (Armazena o estado do jogo)
-// Map<UserId, { bet, bombs, board: [], revealed: [] }>
 const minesCache = new Map();
 
 module.exports = {
-  minesCache, // Exporta para o handler usar
+  minesCache,
 
   handleGambling: async (message, command, args) => {
     const userId = message.author.id;
@@ -27,13 +26,13 @@ module.exports = {
     if (command === "slot" || command === "slots") {
       const bet = parseInt(args[0]);
       if (!bet || bet <= 0)
-        return message.reply(
+        return message.channel.send(
           `<:Nao:1443642030637977743> Uso: \`k!slot <valor>\``
         );
 
       const acc = await getAccount(userId, guildId);
       if (acc.wallet < bet)
-        return message.reply(
+        return message.channel.send(
           "<:notasemoji:1446229027416309841> Você não tem dinheiro suficiente na carteira."
         );
 
@@ -85,37 +84,42 @@ module.exports = {
       return message.channel.send({ embeds: [embed] });
     }
 
-    // --- 💣 MINES (Campo Minado) ---
+    // --- 💣 MINES (Campo Minado 4x4) ---
     if (command === "mines") {
       const bet = parseInt(args[0]);
       const bombs = parseInt(args[1]) || 3; // Padrão 3 bombas
 
       if (!bet || bet <= 0)
-        return message.reply(
-          `<:Nao:1443642030637977743> Uso: \`k!mines <valor> [bombas 1-24]\``
+        return message.channel.send(
+          `<:Nao:1443642030637977743> Uso: \`k!mines <valor> [bombas 1-15]\``
         );
-      if (bombs < 1 || bombs > 24)
-        return message.reply(
-          "<:Nao:1443642030637977743> O número de bombas deve ser entre 1 e 24."
+
+      // Limite ajustado para 15 (4x4 = 16, precisa de pelo menos 1 livre)
+      if (bombs < 1 || bombs > 15)
+        return message.channel.send(
+          "<:Nao:1443642030637977743> O número de bombas deve ser entre 1 e 15."
         );
+
       if (minesCache.has(userId))
-        return message.reply(
+        return message.channel.send(
           "<:Nao:1443642030637977743> Você já tem um jogo em andamento! Termine ele antes."
         );
 
       const acc = await getAccount(userId, guildId);
       if (acc.wallet < bet)
-        return message.reply("<:notasemoji:1446229027416309841> Sem saldo.");
+        return message.channel.send(
+          "<:notasemoji:1446229027416309841> Sem saldo."
+        );
 
-      // Deduz a aposta na hora (para evitar sair do jogo e não perder)
+      // Deduz a aposta
       await removeMoney(userId, guildId, bet);
 
       // Cria o tabuleiro (0 = diamante, 1 = bomba)
-      // Grid 5x5 = 25 posições
-      let board = Array(25).fill(0);
+      // CORREÇÃO: Grid 4x4 = 16 posições
+      let board = Array(16).fill(0);
       let bombsPlaced = 0;
       while (bombsPlaced < bombs) {
-        const pos = Math.floor(Math.random() * 25);
+        const pos = Math.floor(Math.random() * 16);
         if (board[pos] === 0) {
           board[pos] = 1;
           bombsPlaced++;
@@ -132,12 +136,12 @@ module.exports = {
         active: true,
       });
 
-      // Gera botões (5 linhas de 5 botões)
+      // Gera botões (4 linhas de 4 botões)
       const rows = [];
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 4; i++) {
         const row = new ActionRowBuilder();
-        for (let j = 0; j < 5; j++) {
-          const index = i * 5 + j;
+        for (let j = 0; j < 4; j++) {
+          const index = i * 4 + j;
           row.addComponents(
             new ButtonBuilder()
               .setCustomId(`mines_${index}`)
@@ -147,13 +151,13 @@ module.exports = {
         }
         rows.push(row);
       }
-      // Botão de Cashout
+      // Botão de Cashout (5ª Linha)
       const cashoutRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId("mines_cashout")
           .setLabel(
             "<:sacodenotaemoji:1446230070552432771> SAIR E PEGAR O DINHEIRO"
-          )
+          ) // Pode por emoji custom aqui se quiser
           .setStyle(ButtonStyle.Success)
       );
       rows.push(cashoutRow);

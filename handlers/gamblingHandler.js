@@ -5,7 +5,7 @@ const {
   ButtonBuilder,
   ButtonStyle,
 } = require("discord.js");
-const { minesCache } = require("../commands/gambling"); // Importa o cache de jogos
+const { minesCache } = require("../commands/gambling");
 const { addMoney } = require("../economyManager");
 
 const HEADER_IMAGE =
@@ -18,20 +18,18 @@ module.exports = async (interaction) => {
   const userId = interaction.user.id;
   const game = minesCache.get(userId);
 
-  // Verifica se o usuário tem um jogo e se é o jogo DELE
   if (!game) {
-    // Se o jogo não existe mais mas o botão está lá, apenas responde erro
     return interaction.reply({
-      content: "Este jogo já expirou ou não é seu.",
+      content: "<:Nao:1443642030637977743> Jogo expirado ou não é seu.",
       ephemeral: true,
     });
   }
 
-  // CASHOUT (Sacar)
+  // CASHOUT
   if (interaction.customId === "mines_cashout") {
     if (game.revealed.length === 0) {
       return interaction.reply({
-        content: "Você precisa abrir pelo menos um campo!",
+        content: "Abra pelo menos um campo!",
         ephemeral: true,
       });
     }
@@ -39,58 +37,57 @@ module.exports = async (interaction) => {
     const winAmount = Math.floor(game.bet * game.multiplier);
     await addMoney(userId, interaction.guild.id, winAmount);
 
-    minesCache.delete(userId); // Limpa o jogo
+    minesCache.delete(userId);
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0])
       .setTitle("<:sacodenotaemoji:1446230070552432771> CASHOUT!")
       .setColor(0x00ff00)
+      .setImage(HEADER_IMAGE)
       .setDescription(
         `Você parou e ganhou **${winAmount} Kevins**! (x${game.multiplier.toFixed(
           2
         )})`
       );
 
-    // Desativa botões e revela tudo
     const newRows = revealBoard(game.board, game.revealed, true);
     return interaction.update({ embeds: [embed], components: newRows });
   }
 
-  // JOGADA (Clicou num quadrado)
+  // JOGADA
   const index = parseInt(interaction.customId.split("_")[1]);
-  if (game.revealed.includes(index)) return interaction.deferUpdate(); // Já clicado
+  if (game.revealed.includes(index)) return interaction.deferUpdate();
 
-  // 1. BATEU NA BOMBA (PERDEU)
+  // 1. BOMBA (PERDEU)
   if (game.board[index] === 1) {
     minesCache.delete(userId);
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0])
       .setTitle("💥 CABUM!")
       .setColor(0xff0000)
+      .setImage(HEADER_IMAGE)
       .setDescription(
         `Você explodiu uma bomba e perdeu **${game.bet} Kevins**.`
       );
 
-    // Revela tudo com a bomba explodida
     const newRows = revealBoard(game.board, game.revealed, true, index);
     return interaction.update({ embeds: [embed], components: newRows });
   }
 
-  // 2. BATEU NO DIAMANTE (CONTINUA)
+  // 2. DIAMANTE (CONTINUA)
   game.revealed.push(index);
 
-  // Calcula novo multiplicador (Lógica simples de risco)
-  // Cada acerto aumenta o multi baseado na chance
-  const totalTiles = 25;
+  // Multiplicador 4x4 (16 casas)
+  const totalTiles = 16;
   const safeTiles = totalTiles - game.bombsCount;
   const remainingSafe = safeTiles - (game.revealed.length - 1);
-  // Fórmula de crescimento exponencial leve
+
   const nextMulti =
-    game.multiplier * (1 + (game.bombsCount / remainingSafe) * 0.8);
+    game.multiplier * (1 + (game.bombsCount / remainingSafe) * 0.5); // Ajuste matemático para 4x4
   game.multiplier = nextMulti;
 
   const currentWin = Math.floor(game.bet * game.multiplier);
 
-  // Se abriu todos os diamantes possíveis -> Auto Win
+  // Vitória Automática (Limpou o campo)
   if (game.revealed.length === safeTiles) {
     await addMoney(userId, interaction.guild.id, currentWin);
     minesCache.delete(userId);
@@ -98,6 +95,7 @@ module.exports = async (interaction) => {
     const embed = EmbedBuilder.from(interaction.message.embeds[0])
       .setTitle("<:vd_diamanteK:1443648289068285972> VITÓRIA PERFEITA!")
       .setColor(0x00ff00)
+      .setImage(HEADER_IMAGE)
       .setDescription(
         `Você achou todos os diamantes!\nGanho: **${currentWin} Kevins**`
       );
@@ -106,7 +104,7 @@ module.exports = async (interaction) => {
     return interaction.update({ embeds: [embed], components: newRows });
   }
 
-  // Atualiza o jogo
+  // Atualiza Embed
   const embed = EmbedBuilder.from(interaction.message.embeds[0])
     .setDescription(
       `Aposta: **${game.bet}**\nBombas: **${
@@ -121,13 +119,14 @@ module.exports = async (interaction) => {
   await interaction.update({ embeds: [embed], components: newRows });
 };
 
-// Função para redesenhar os botões
+// Função de Desenho (4x4)
 function revealBoard(board, revealed, gameOver, explodedIndex = -1) {
   const rows = [];
-  for (let i = 0; i < 5; i++) {
+  // Loop 4x4 para evitar erro de limite
+  for (let i = 0; i < 4; i++) {
     const row = new ActionRowBuilder();
-    for (let j = 0; j < 5; j++) {
-      const index = i * 5 + j;
+    for (let j = 0; j < 4; j++) {
+      const index = i * 4 + j;
       const btn = new ButtonBuilder()
         .setCustomId(`mines_${index}`)
         .setStyle(ButtonStyle.Secondary);
@@ -138,13 +137,12 @@ function revealBoard(board, revealed, gameOver, explodedIndex = -1) {
           .setStyle(ButtonStyle.Success)
           .setDisabled(true);
       } else if (gameOver) {
-        // Revela o resto
         btn.setDisabled(true);
         if (board[index] === 1) {
           btn.setEmoji("<:black_bombcr:1446238680741314643>");
-          if (index === explodedIndex) btn.setStyle(ButtonStyle.Danger); // A bomba que você clicou
+          if (index === explodedIndex) btn.setStyle(ButtonStyle.Danger);
         } else {
-          btn.setEmoji("☁️"); // Espaço vazio não clicado
+          btn.setEmoji("☁️");
         }
       } else {
         btn.setLabel("❓");
@@ -154,14 +152,11 @@ function revealBoard(board, revealed, gameOver, explodedIndex = -1) {
     rows.push(row);
   }
 
-  // Se não acabou, adiciona botão de cashout
   if (!gameOver) {
     const cashoutRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId("mines_cashout")
-        .setLabel(
-          "<:sacodenotaemoji:1446230070552432771> SAIR E PEGAR O DINHEIRO"
-        )
+        .setLabel("💰 SAIR E PEGAR O DINHEIRO")
         .setStyle(ButtonStyle.Success)
     );
     rows.push(cashoutRow);

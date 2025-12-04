@@ -70,7 +70,7 @@ module.exports = async (interaction) => {
 
     if (!playerID || !state.players[playerID])
       return interaction.followUp({
-        content: "❌ Jogador não encontrado na rodada.",
+        content: "<:Nao:1443642030637977743> Jogador não encontrado na rodada.",
         ephemeral: true,
       });
 
@@ -85,13 +85,16 @@ module.exports = async (interaction) => {
       playerState.answers[categoryIndex] = "";
     } else {
       return interaction.followUp({
-        content: `❌ Categoria inválida.`,
+        content: `<:Nao:1443642030637977743> Categoria inválida.`,
         ephemeral: true,
       });
     }
 
     await postReviewEmbed(state, interaction.channel);
-    await interaction.followUp({ content: `✅ Atualizado.`, ephemeral: true });
+    await interaction.followUp({
+      content: `<:certo_froid:1443643346722754692> Atualizado.`,
+      ephemeral: true,
+    });
     return true;
   }
 
@@ -104,7 +107,7 @@ module.exports = async (interaction) => {
 
     await interaction.deferUpdate();
     await interaction.editReply({
-      content: `✅ Finalizado por ${interaction.user.tag}.`,
+      content: `<:certo_froid:1443643346722754692> Finalizado por ${interaction.user.tag}.`,
       components: [],
     });
 

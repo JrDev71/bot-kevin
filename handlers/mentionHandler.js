@@ -8,7 +8,7 @@ module.exports = async (message) => {
 
   // Lógica da Resposta (Embed de Apresentação)
   const mentionEmbed = new EmbedBuilder()
-    .setTitle("🤖 Olá! Eu sou o MC KEVIN.")
+    .setTitle("<:robo1:1443677412498870434> Olá! Eu sou o MC KEVIN.")
     .setDescription(
       "Fui desenvolvido com o objetivo de gerenciar a **verificação de novos membros** e automatizar algumas tarefas."
     )

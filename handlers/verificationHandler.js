@@ -16,7 +16,7 @@ const REJECT_BUTTON_ID = "reject_user";
 
 // CONFIG VISUAL
 const HEADER_IMAGE =
-  "https://cdn.discordapp.com/attachments/1323511636518371360/1323511704248258560/S2_banner_1.png?ex=6775761a&is=6774249a&hm=52d8e058752746d0f07363140799265a78070602456c93537c7d1135c7203d1a&";
+  "https://cdn.discordapp.com/attachments/885926443220107315/1443687792637907075/Gemini_Generated_Image_ppy99dppy99dppy9.png?ex=6929fa88&is=6928a908&hm=70e19897c6ea43c36f11265164a26ce5b70e4cb2699b82c26863edfb791a577d&";
 const COLOR_NEUTRAL = 0x2f3136;
 
 module.exports = async (interaction) => {
@@ -54,7 +54,8 @@ module.exports = async (interaction) => {
 
     if (!approvalChannel) {
       return interaction.followUp({
-        content: "❌ Erro interno: Canal de aprovação não configurado.",
+        content:
+          "<:Nao:1443642030637977743> Erro interno: Canal de aprovação não configurado.",
         ephemeral: true,
       });
     }
@@ -80,7 +81,7 @@ module.exports = async (interaction) => {
         .setCustomId(APPROVE_BUTTON_ID)
         .setLabel("Aprovar Acesso")
         .setStyle(ButtonStyle.Secondary)
-        .setEmoji("✅"),
+        .setEmoji("<:certo_froid:1443643346722754692>"),
       new ButtonBuilder()
         .setCustomId(REJECT_BUTTON_ID)
         .setLabel("Recusar Acesso")
@@ -88,17 +89,21 @@ module.exports = async (interaction) => {
         .setEmoji("⛔")
     );
 
-    const mention = config.APPROVER_ROLE_ID
-      ? `<@&${config.APPROVER_ROLE_ID}>`
-      : "";
+    // Monta menção para ambos os cargos
+    let mentionText = "";
+    if (config.APPROVER_ROLE_ID)
+      mentionText += `<@&${config.APPROVER_ROLE_ID}> `;
+    if (config.SECONDARY_APPROVER_ROLE_ID)
+      mentionText += `<@&${config.SECONDARY_APPROVER_ROLE_ID}>`;
+    if (!mentionText) mentionText = "@Donos";
 
     await approvalChannel.send({
-      content: mention,
+      content: mentionText,
       embeds: [approvalEmbed],
       components: [row],
     });
     await interaction.followUp({
-      content: `✅ Sua solicitação foi enviada para a equipe. Aguarde.`,
+      content: `<:certo_froid:1443643346722754692> Sua solicitação foi enviada para a equipe. Aguarde.`,
       ephemeral: true,
     });
     return true;
@@ -109,35 +114,32 @@ module.exports = async (interaction) => {
     isButton &&
     [APPROVE_BUTTON_ID, REJECT_BUTTON_ID].includes(interaction.customId)
   ) {
-    // Checagem de Permissão
+    // --- CORREÇÃO AQUI: Verifica Primário OU Secundário OU Admin ---
     const hasPerm =
       (config.APPROVER_ROLE_ID &&
         interaction.member.roles.cache.has(config.APPROVER_ROLE_ID)) ||
-      interaction.member.permissions.has(
-        PermissionsBitField.Flags.Administrator
-      );
-    if (!hasPerm)
+      (config.SECONDARY_APPROVER_ROLE_ID &&
+        interaction.member.roles.cache.has(config.SECONDARY_APPROVER_ROLE_ID));
+    if (!hasPerm) {
       return interaction.reply({
         content: "🔒 Sem permissão.",
         ephemeral: true,
       });
+    }
 
     await interaction.deferUpdate();
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0]);
     embed.setImage(HEADER_IMAGE).setColor(COLOR_NEUTRAL);
 
-    // --- CORREÇÃO DA REGEX AQUI ---
-    // Procura por qualquer sequência de 17 a 20 números no campo 'Usuário' ou 'Membro'
-    // Isso funciona com ou sem crases, com ou sem parenteses.
+    // Regex ajustada para pegar ID
     const targetId = embed.data.fields
       .find((f) => f.name === "Usuário" || f.name === "Membro")
       ?.value.match(/\d{17,20}/)?.[0];
 
     if (!targetId) {
       return interaction.followUp({
-        content:
-          "❌ Erro: Não foi possível encontrar o ID do usuário na ficha.",
+        content: "<:Nao:1443642030637977743> Erro: ID não encontrado na ficha.",
         ephemeral: true,
       });
     }
@@ -148,35 +150,31 @@ module.exports = async (interaction) => {
 
     if (!member) {
       embed.data.fields.find((f) => f.name === "Status").value =
-        "❌ Usuário saiu do servidor";
+        "<:Nao:1443642030637977743> Usuário saiu do servidor";
       return interaction.editReply({ embeds: [embed], components: [] });
     }
 
     if (interaction.customId === APPROVE_BUTTON_ID) {
       try {
-        // Verificação extra para garantir que 'member.roles' existe
         if (member.roles) {
           await member.roles.add(config.VERIFIED_ROLE_ID);
           embed.data.fields.find(
             (f) => f.name === "Status"
-          ).value = `✅ Aprovado por ${interaction.user.username}`;
+          ).value = `<:certo_froid:1443643346722754692> Aprovado por ${interaction.user.username}`;
 
           const logChannel = interaction.guild.channels.cache.get(
             config.APPROVED_LOG_CHANNEL_ID
           );
           if (logChannel)
             logChannel.send({
-              content: `✅ Acesso liberado: ${member}`,
+              content: `<:certo_froid:1443643346722754692> Acesso liberado: ${member}`,
               embeds: [embed],
             });
-        } else {
-          throw new Error("Objeto member.roles indefinido.");
         }
       } catch (error) {
         console.error("Erro ao dar cargo:", error);
-        // Não retorna erro para não travar a edição da mensagem, apenas loga
         await interaction.followUp({
-          content: `❌ Erro ao dar cargo: Verifique a hierarquia do bot.`,
+          content: `<:Nao:1443642030637977743> Erro ao dar cargo: Verifique a hierarquia.`,
           ephemeral: true,
         });
         return;
@@ -187,7 +185,7 @@ module.exports = async (interaction) => {
       ).value = `⛔ Recusado por ${interaction.user.username}`;
       member
         .send(
-          `Sua solicitação de acesso em **${interaction.guild.name}** foi recusada pela moderação.`
+          `Sua solicitação de acesso em **${interaction.guild.name}** foi recusada pela liderança. Fora paneleiro`
         )
         .catch(() => {});
     }

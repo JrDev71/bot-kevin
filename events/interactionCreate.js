@@ -20,6 +20,7 @@ const handleBooster = require("../handlers/boosterHandler"); // Painel Booster (
 const handleChannelManagement = require("../handlers/channelHandler"); // Painel de Canais (Infra)
 const handleModInteractions = require("../handlers/modHandler"); // Painel de Moderação (Justiça)
 const handleGameRoles = require("../handlers/gameRoleHandler"); // Painel de Jogos (Auto-Role)
+const handleGamblingInteract = require("../handlers/gamblingHandler");
 
 // O Handler de Gestão de Cargos (k!cargo) está dentro do arquivo de comando
 const { handleRoleInteractions } = require("../commands/rolePanel");
@@ -55,6 +56,8 @@ module.exports = async (interaction) => {
 
     // 8. Seleção de Jogos (Auto-Role / k!jogos)
     if (await handleGameRoles(interaction)) return;
+
+    if (await handleGamblingInteract(interaction)) return;
 
     // 9. Painel de Gestão de Cargos (k!cargo)
     // Este handler específico retorna false se não processar

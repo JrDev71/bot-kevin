@@ -194,10 +194,10 @@ client.once("ready", async () => {
 
   // --- STATUS ROTATIVO ---
   const activities = [
-    { name: `🚨 Segurança`, type: ActivityType.Watching },
-    { name: `💎 Gerenciamento`, type: ActivityType.Listening },
-    { name: `🎮 Plato Hot`, type: ActivityType.Playing },
-    { name: `🍀 Melhor que ta tendo`, type: ActivityType.Competing },
+    { name: `🎮 Monitorando 171 usuários`, type: ActivityType.Streaming },
+    { name: `🚨 Segurança`, type: ActivityType.Streaming },
+    { name: `🍀 Analisando dados do sistema`, type: ActivityType.Streaming },
+    { name: `💎 ETERNO KEVIN`, type: ActivityType.Streaming },
   ];
 
   let i = 0;

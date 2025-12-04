@@ -186,16 +186,35 @@ process.on("unhandledRejection", (reason) =>
 client.once("ready", async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}!`);
   console.log(`[STATUS] Bot pronto para receber comandos.`);
+  // --- STATUS ROTATIVO ---
+  const activities = [
+    { name: `🚨 Segurança`, type: 3 }, // 3 = Watching (Assistindo)
+    { name: `💎 Gerenciamento`, type: 2 }, // 2 = Listening (Ouvindo)
+    { name: `🎮 Plato Hot`, type: 0 }, // 0 = Playing (Jogando)
+    { name: `🍀 Melhor que ta tendo`, type: 5 }, // 5 = Competing (Competindo)
+  ];
 
-  await postVerificationPanel(client);
-
-  // Inicia verificador de VIPs (Database)
-  console.log("[SISTEMA VIP] Iniciando verificador de validade...");
-  checkExpiredVips(client);
+  let i = 0;
   setInterval(() => {
-    checkExpiredVips(client);
-  }, 3600 * 1000);
+    // Atualiza a atividade
+    client.user.setPresence({
+      activities: [{ name: activities[i].name, type: activities[i].type }],
+      status: "online",
+    });
+
+    // Passa para a próxima
+    i = ++i % activities.length;
+  }, 10000); // Troca a cada 10 segundos
 });
+
+await postVerificationPanel(client);
+
+// Inicia verificador de VIPs (Database)
+console.log("[SISTEMA VIP] Iniciando verificador de validade...");
+checkExpiredVips(client);
+setInterval(() => {
+  checkExpiredVips(client);
+}, 3600 * 1000);
 
 // --- SERVER HTTP (Para o Render) ---
 const server = http.createServer((req, res) => {

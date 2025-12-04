@@ -34,14 +34,14 @@ const {
 } = require("../commands/lockdown");
 const { handleBotInfo } = require("../commands/botinfo");
 const { handleListMembers } = require("../commands/listMembers");
+const { handleVoice } = require("../commands/voice"); // <--- ADICIONADO
 
-// --- PAINÉIS DE GESTÃO ---
-const { sendRolePanel } = require("../commands/rolePanel"); // Painel Admin de Cargos
-const { handleChannelPanel } = require("../commands/channelPanel"); // Painel de Infra
-const { handleModPanel } = require("../commands/modPanel"); // Painel de Moderação
-const { sendGameRolesPanel } = require("../commands/gameRoles"); // Painel de Jogos (Auto-Role)
-const { handleBoosterPanel } = require("../commands/booster");
-const { handleVoice } = require("../commands/voice");
+// --- NOVOS PAINÉIS VISUAIS ---
+const { sendRolePanel } = require("../commands/rolePanel"); // k!cargo (Admin)
+const { handleChannelPanel } = require("../commands/channelPanel"); // k!canal
+const { handleModPanel } = require("../commands/modPanel"); // k!mod
+const { sendGameRolesPanel } = require("../commands/gameRoles"); // k!roles (Jogos) <--- ADICIONADO
+const { handleBoosterPanel } = require("../commands/booster"); // k!booster <--- ADICIONADO
 
 const PREFIX = "k!";
 
@@ -85,8 +85,6 @@ module.exports = async (message) => {
       if (state.players[userId] && state.players[userId].isStopped) return;
 
       const content = message.content.trim().toUpperCase();
-
-      // Verifica se começa com a letra e tem vírgulas (indício de resposta múltipla)
       if (content.startsWith(currentLetter) && content.includes(",")) {
         const rawAnswers = content.split(",");
         const cleanedAnswers = rawAnswers
@@ -103,7 +101,7 @@ module.exports = async (message) => {
               .send({
                 embeds: [
                   createFeedbackEmbed(
-                    "<:Nao:1443642030637977743> Resposta Inválida",
+                    "❌ Resposta Inválida",
                     `Todas as respostas devem começar com a letra **${currentLetter}**!`,
                     0x00bfff
                   ),
@@ -143,17 +141,12 @@ module.exports = async (message) => {
   // 3. ROTEAMENTO DE COMANDOS
   // ====================================================
 
-  // --- PAINÉIS GERAIS DE ADMINISTRAÇÃO ---
-  if (["cargo", "cargosadmin"].includes(command)) return sendRolePanel(message); // Gestão de Cargos (Admin)
-  if (["canal", "canais", "infra"].includes(command))
-    return handleChannelPanel(message);
-  if (["mod", "punir", "justice"].includes(command))
-    return handleModPanel(message);
-
-  // --- SISTEMAS ---
+  // --- INFO & AJUDA ---
   if (["help", "ajuda", "comandos"].includes(command))
     return handleHelp(message);
   if (["sistemas", "botinfo"].includes(command)) return handleBotInfo(message);
+
+  // --- SISTEMA VIP ---
   if (
     [
       "vip",
@@ -166,10 +159,21 @@ module.exports = async (message) => {
     ].includes(command)
   )
     return handleVipCommands(message, command, args);
+  if (["booster", "boost"].includes(command))
+    return handleBoosterPanel(message); // <--- NOVO
+
+  // --- SISTEMA DE PROTEÇÃO ---
   if (["panela", "blacklist"].includes(command))
     return handleProtection(message, command, args);
   if (["pd", "setpd", "removepd"].includes(command))
     return handlePDCommand(message, command, args);
+
+  // --- PAINÉIS DE GESTÃO ---
+  if (["cargo", "cargosadmin"].includes(command)) return sendRolePanel(message);
+  if (["canal", "canais", "infra"].includes(command))
+    return handleChannelPanel(message);
+  if (["mod", "punir", "justice"].includes(command))
+    return handleModPanel(message);
 
   // --- MODERAÇÃO MANUAL ---
   if (command === "ban") return handleBan(message, args);
@@ -180,6 +184,8 @@ module.exports = async (message) => {
   if (command === "unmute") return handleUnmute(message, args);
   if (command === "prender") return handleJail(message, args);
   if (command === "soltar") return handleUnjail(message, args);
+
+  // --- LOCKDOWN ---
   if (["lock", "trancar"].includes(command)) return handleLockdown(message);
   if (["lockall", "trancartudo"].includes(command))
     return handleLockdownAll(message);
@@ -188,21 +194,18 @@ module.exports = async (message) => {
   if (["unlockall", "destrancartudo"].includes(command))
     return handleUnlockdownAll(message);
 
+  // --- SISTEMA DE VOZ ---
+  if (["join", "entrar", "leave", "sair"].includes(command))
+    return handleVoice(message, args, command); // <--- NOVO
+
   // --- UTIL ---
   if (command === "av") return handleAvatar(message, args);
   if (command === "repeat") return handleRepeat(message, args);
-  if (command === "booster" || command === "boost") {
-    return handleBoosterPanel(message);
-  }
-  // --- SISTEMA DE VOZ (BOT) ---
-  if (["join", "entrar", "leave", "sair"].includes(command)) {
-    return handleVoice(message, args, command);
-  }
   if (["membros", "listmembers", "list"].includes(command))
     return handleListMembers(message, args); // --- PAINEL DE JOGOS (AUTO-ROLE) ---
 
   if (["roles", "cargos", "jogos"].includes(command)) {
-    return sendGameRolesPanel(message);
+    return sendGameRolesPanel(message); // <--- NOVO
   } // --- JOGO STOP ---
 
   if (command === "stop") {
@@ -221,12 +224,7 @@ module.exports = async (message) => {
   if (command === "parar") {
     if (!state.isActive)
       return message.channel.send({
-        embeds: [
-          createFeedbackEmbed(
-            "<:Nao:1443642030637977743> Jogo Inativo",
-            `Não há jogo ativo.`
-          ),
-        ],
+        embeds: [createFeedbackEmbed("❌ Jogo Inativo", `Não há jogo ativo.`)],
       });
     clearTimeout(state.timer);
     state.isActive = false;
@@ -236,7 +234,7 @@ module.exports = async (message) => {
       ],
     });
     await postReviewEmbed(state, message.channel);
-  } // --- RESPOSTA OBSOLETA ---
+  } // --- RESPOSTA STOP OBSOLETA ---
 
   if (command === "resposta" || command === "respostas") {
     return message.channel

@@ -61,3 +61,16 @@ model BoosterFriend {
   
   owner    Booster @relation(fields: [ownerId], references: [userId], onDelete: Cascade)
 }
+
+// --- SISTEMA DE ECONOMIA ---
+model Economy {
+  id        Int       @id @default(autoincrement())
+  userId    String
+  guildId   String    // Economia separada por servidor (boa prática)
+  wallet    Int       @default(0)
+  bank      Int       @default(0)
+  lastDaily DateTime? // Data do último daily
+  lastWork  DateTime? // Data do último trabalho
+
+  @@unique([userId, guildId])
+}

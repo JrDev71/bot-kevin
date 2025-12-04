@@ -42,6 +42,7 @@ const { handleChannelPanel } = require("../commands/channelPanel"); // k!canal
 const { handleModPanel } = require("../commands/modPanel"); // k!mod
 const { sendGameRolesPanel } = require("../commands/gameRoles"); // k!roles (Jogos) <--- ADICIONADO
 const { handleBoosterPanel } = require("../commands/booster"); // k!booster <--- ADICIONADO
+const { handleEconomy } = require("../commands/economy");
 
 const PREFIX = "k!";
 
@@ -206,7 +207,29 @@ module.exports = async (message) => {
 
   if (["roles", "cargos", "jogos"].includes(command)) {
     return sendGameRolesPanel(message); // <--- NOVO
-  } // --- JOGO STOP ---
+  }
+
+  // --- ECONOMIA ---
+  if (
+    [
+      "atm",
+      "saldo",
+      "carteira",
+      "daily",
+      "work",
+      "trabalhar",
+      "pay",
+      "pagar",
+      "rank",
+      "leaderboard",
+      "top",
+      "eco",
+    ].includes(command)
+  ) {
+    return handleEconomy(message, command, args);
+  }
+
+  // --- JOGO STOP ---
 
   if (command === "stop") {
     if (state.isActive)

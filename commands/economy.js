@@ -145,7 +145,7 @@ module.exports = {
         return message.channel.send({
           embeds: [
             createEcoEmbed(
-              "<:notasemoji:1446229027416309841> Transferência",
+              "<:green_Pix:1446556258235580548> Transferência",
               `Você enviou **${amount} ${CURRENCY}** para ${target}.`,
               0x00ff00
             ),

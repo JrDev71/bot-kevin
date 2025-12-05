@@ -45,6 +45,7 @@ const { handleBoosterPanel } = require("../commands/booster"); // k!booster <---
 const { handleEconomy } = require("../commands/economy");
 const { handleGambling } = require("../commands/gambling");
 const { handleCrime } = require("../commands/crime");
+const { handleTicketPanel } = require("../commands/ticketPanel");
 
 const PREFIX = "k!";
 
@@ -209,6 +210,10 @@ module.exports = async (message) => {
 
   if (["roles", "cargos", "jogos"].includes(command)) {
     return sendGameRolesPanel(message); // <--- NOVO
+  }
+
+  if (["ticket", "suporte", "atendimento"].includes(command)) {
+    return handleTicketPanel(message);
   }
 
   // --- ECONOMIA ---

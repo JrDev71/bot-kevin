@@ -1,16 +1,15 @@
 // handlers/ticketHandler.js
 const {
   ChannelType,
-  PermissionsBitField,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   AttachmentBuilder,
+  MessageFlags,
 } = require("discord.js");
 
 const { BTN_OPEN } = require("../commands/ticketPanel");
-
 const BTN_CLOSE = "btn_ticket_close";
 const BTN_TRANSCRIPT = "btn_ticket_transcript";
 const BTN_DELETE = "btn_ticket_delete";
@@ -32,19 +31,26 @@ module.exports = async (interaction) => {
   const { customId, guild, user } = interaction;
   const config = interaction.client.config;
 
-  // --- 1. ABRIR TICKET (THREAD) ---
+  // --- 1. ABRIR TICKET ---
   if (customId === BTN_OPEN) {
-    await interaction.deferReply({ ephemeral: true });
+    // Debug Log
+    console.log(`[TICKET] Tentativa de abrir por ${user.tag}`);
+    console.log(
+      `[TICKET] ID Pai Configurado: ${config.TICKET_PARENT_CHANNEL_ID}`
+    );
 
-    // Verifica se o canal pai é válido para criar threads
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     const parentChannelId = config.TICKET_PARENT_CHANNEL_ID;
     const parentChannel = guild.channels.cache.get(parentChannelId);
 
-    if (!parentChannel)
-      return interaction.editReply("⚠️ Canal de Suporte não configurado.");
+    if (!parentChannel) {
+      console.error("[TICKET ERROR] Canal pai não encontrado no cache.");
+      return interaction.editReply(
+        "⚠️ Erro de Configuração: Canal de Suporte não encontrado (ID inválido no .env?)."
+      );
+    }
 
-    // Verifica se o usuário já tem um ticket (Thread) ativo neste canal
-    // (O Discord não tem um jeito fácil de buscar threads por dono, então buscamos pelo nome)
     const threadName = `ticket-${user.username}`;
     const existingThread = parentChannel.threads.cache.find(
       (t) => t.name === threadName && !t.archived
@@ -57,20 +63,14 @@ module.exports = async (interaction) => {
     }
 
     try {
-      // Cria a Thread Privada
       const thread = await parentChannel.threads.create({
         name: threadName,
-        autoArchiveDuration: 60, // Arquiva após 1h de inatividade (padrão)
-        type: ChannelType.PrivateThread, // Só staff e convidado veem
-        reason: `Ticket aberto por ${user.tag}`,
+        autoArchiveDuration: 60,
+        type: ChannelType.PrivateThread,
+        reason: `Ticket de ${user.tag}`,
       });
 
-      // Adiciona o usuário à thread
       await thread.members.add(user.id);
-
-      // Adiciona a Staff (se o cargo estiver configurado)
-      // Nota: Quem tem permissão "Gerenciar Tópicos" já vê threads privadas.
-      // Mas podemos mencionar o cargo para notificar.
 
       const embed = new EmbedBuilder()
         .setTitle(`<:W_Ticket:1446489399897358336> Atendimento Iniciado`)
@@ -93,12 +93,11 @@ module.exports = async (interaction) => {
           .setEmoji("<:b_anotacTKF:1446495699985240215>")
       );
 
-      // Menciona a Staff e o Usuário
-      const mentionStaff = config.APPROVER_ROLE_ID
+      const mention = config.APPROVER_ROLE_ID
         ? `<@&${config.APPROVER_ROLE_ID}>`
         : "";
       await thread.send({
-        content: `${user} ${mentionStaff}`,
+        content: `${user} ${mention}`,
         embeds: [embed],
         components: [row],
       });
@@ -107,86 +106,124 @@ module.exports = async (interaction) => {
         content: `<:certo_froid:1443643346722754692> Ticket criado: <#${thread.id}>`,
       });
     } catch (e) {
-      console.error(e);
+      console.error("[TICKET ERROR]", e);
       return interaction.editReply(
-        "<:Nao:1443642030637977743> Erro ao criar Tópico. Verifique se o bot tem permissão de 'Criar Tópicos Privados'."
+        "<:Nao:1443642030637977743> Erro ao criar Tópico. Verifique permissões do bot."
       );
     }
   }
 
-  // --- 2. FECHAR TICKET (Trancar Thread) ---
+  // --- 2. FECHAR ---
   if (customId === BTN_CLOSE) {
-    // Confirmação
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(BTN_DELETE)
         .setLabel("Encerrar Atendimento")
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Secondary)
         .setEmoji("<:vmc_lixeiraK:1443653159779041362>")
     );
     return interaction.reply({
-      content: "Deseja encerrar este atendimento?",
+      content: "Deseja encerrar e salvar o log?",
       components: [row],
     });
   }
 
-  // --- 3. TRANSCRIPT ---
+  // --- 3. LOG (Manual) ---
   if (customId === BTN_TRANSCRIPT) {
-    await interaction.deferReply({ ephemeral: true });
-    const channel = interaction.channel; // A thread atual
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const channel = interaction.channel;
 
-    const messages = await channel.messages.fetch({ limit: 100 });
-    const logContent = messages
-      .reverse()
-      .map(
-        (m) =>
-          `[${new Date(m.createdTimestamp).toLocaleString()}] ${
-            m.author.tag
-          }: ${m.content} ${m.attachments.size > 0 ? "[Arquivo]" : ""}`
-      )
-      .join("\n");
+    try {
+      const messages = await channel.messages.fetch({ limit: 100 });
+      const logContent = messages
+        .reverse()
+        .map(
+          (m) =>
+            `[${new Date(m.createdTimestamp).toLocaleString()}] ${
+              m.author.tag
+            }: ${m.content}`
+        )
+        .join("\n");
+      const attachment = new AttachmentBuilder(
+        Buffer.from(logContent, "utf-8"),
+        { name: `log-${channel.name}.txt` }
+      );
 
-    const attachment = new AttachmentBuilder(Buffer.from(logContent, "utf-8"), {
-      name: `log-${channel.name}.txt`,
-    });
-    const logChannel = guild.channels.cache.get(config.TICKET_LOG_ID);
+      const logChannel = guild.channels.cache.get(config.TICKET_LOG_ID);
+      if (logChannel) {
+        await logChannel.send({
+          content: `<:b_anotacTKF:1446495699985240215> Log de Ticket (Manual): \`${channel.name}\``,
+          files: [attachment],
+        });
+        return interaction.editReply(
+          "<:certo_froid:1443643346722754692> Log salvo."
+        );
+      }
 
-    if (logChannel) {
-      await logChannel.send({
-        content: `<:b_anotacTKF:1446495699985240215> Log de Ticket: \`${channel.name}\``,
+      await interaction.user.send({
+        content: "Log do ticket:",
         files: [attachment],
       });
       return interaction.editReply(
-        "<:certo_froid:1443643346722754692> Log salvo no canal de registros."
+        "<:certo_froid:1443643346722754692> Log enviado na DM."
       );
+    } catch (e) {
+      return interaction.editReply("Erro ao gerar log.");
     }
-    await interaction.user
-      .send({ content: "Log do ticket:", files: [attachment] })
-      .catch(() => {});
-    return interaction.editReply(
-      "<:certo_froid:1443643346722754692> Log enviado na sua DM (Canal de logs não configurado)."
-    );
   }
 
-  // --- 4. DELETAR (Apagar Thread) ---
+  // --- 4. DELETAR (Automático com Log) ---
   if (customId === BTN_DELETE) {
     const thread = interaction.channel;
     if (!thread.isThread())
       return interaction.reply({
-        content: "Isso não é um ticket/tópico.",
-        ephemeral: true,
+        content: "Erro: Canal inválido.",
+        flags: MessageFlags.Ephemeral,
       });
 
     await interaction.reply(
-      "<:vmc_lixeiraK:1443653159779041362> Encerrando ticket..."
+      "<:vmc_lixeiraK:1443653159779041362> Gerando log e encerrando..."
     );
 
-    // Gera log final automático antes de deletar
-    // (Opcional, copie a lógica do Transcript se quiser salvar sempre)
+    // Tenta gerar e enviar o log antes de deletar
+    try {
+      const messages = await thread.messages.fetch({ limit: 100 });
+      const logContent = messages
+        .reverse()
+        .map(
+          (m) =>
+            `[${new Date(m.createdTimestamp).toLocaleString()}] ${
+              m.author.tag
+            }: ${m.content}`
+        )
+        .join("\n");
 
+      const attachment = new AttachmentBuilder(
+        Buffer.from(logContent, "utf-8"),
+        { name: `log-${thread.name}.txt` }
+      );
+
+      const logChannel = guild.channels.cache.get(config.TICKET_LOG_ID);
+
+      if (logChannel) {
+        await logChannel.send({
+          content: `<:b_anotacTKF:1446495699985240215> **Ticket Encerrado:** \`${thread.name}\`\n👤 Fechado por: ${user}`,
+          files: [attachment],
+        });
+      } else {
+        console.warn(
+          "[TICKET] Canal de Log não encontrado para salvar o transcript."
+        );
+      }
+    } catch (error) {
+      console.error("[TICKET ERROR] Falha ao gerar log no delete:", error);
+    }
+
+    // Aguarda um pouco e deleta
     setTimeout(() => {
       thread.delete().catch(() => {});
     }, 3000);
+
     return true;
   }
 

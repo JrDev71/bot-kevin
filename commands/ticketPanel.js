@@ -12,7 +12,7 @@ const BTN_OPEN = "btn_ticket_open";
 // CONFIG VISUAL
 const HEADER_IMAGE =
   "https://cdn.discordapp.com/attachments/885926443220107315/1446478914468974742/ticket-banner.png?ex=693421f7&is=6932d077&hm=cf586cf1ba2ae3770bcc3d436cbbf044df522986ead23ff6cbff17e876d07570&";
-const COLOR_NEUTRAL = 0x2f3136;
+const COLOR_NEUTRAL = 0x3498db;
 
 module.exports = {
   BTN_OPEN,
@@ -37,7 +37,7 @@ module.exports = {
     const embed = new EmbedBuilder()
       .setTitle("<:W_Ticket:1446489399897358336> Central de Atendimento")
       .setDescription(
-        "Precisa de algo? o <@728192519476740096> vai lhe atender.\n" +
+        "Precisa de algo?\n" +
           "**Clique no botão abaixo**.\n\n" +
           "Um atendimento privado será aberto neste mesmo canal."
       )

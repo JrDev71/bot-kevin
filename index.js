@@ -68,6 +68,8 @@ client.config = {
   CHANNEL_UPDATE_LOG_ID: process.env.CHANNEL_UPDATE_LOG_ID,
   PD_LOG_CHANNEL_ID: process.env.PD_LOG_CHANNEL_ID,
   LOG_CHANNEL_ID: process.env.LOG_CHANNEL_ID,
+  PANELA_LOG_ID: process.env.PANELA_LOG_ID,
+  BLACKLIST_LOG_ID: process.env.BLACKLIST_LOG_ID,
 
   // Auto-Roles (Jogos)
   FREEFIRE_ROLE_ID: process.env.FREEFIRE_ROLE_ID,

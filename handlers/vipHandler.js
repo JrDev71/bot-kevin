@@ -7,12 +7,10 @@ const {
   PermissionsBitField,
   ChannelType,
   EmbedBuilder,
-  ButtonStyle,
 } = require("discord.js");
 
 const { getVipData, updateVipData, addFriend } = require("../vipManager");
 const { BTN_TAG, BTN_CHANNEL, BTN_ADD_MEMBER } = require("../commands/vip");
-const logEmbed = require("../utils/logEmbed");
 
 // IDs Internos dos Modais
 const MODAL_TAG = "vip_modal_tag";
@@ -39,7 +37,16 @@ module.exports = async (interaction) => {
   const isButton = interaction.isButton();
   const isModal = interaction.isModalSubmit();
 
-  // 1. BOTÕES -> ABRIR MODAIS
+  // --- SEGURANÇA NA LEITURA DE VARIÁVEIS ---
+  // Tenta ler do config interno, se falhar, força leitura do processo global (.env)
+  const getConfig = (key) => {
+    const internal = interaction.client.config
+      ? interaction.client.config[key]
+      : undefined;
+    return internal || process.env[key];
+  };
+
+  // --- 1. BOTÕES (Abrem os Modais) ---
   if (
     isButton &&
     [BTN_TAG, BTN_CHANNEL, BTN_ADD_MEMBER].includes(interaction.customId)
@@ -97,18 +104,15 @@ module.exports = async (interaction) => {
     return true;
   }
 
-  // 2. PROCESSAR MODAIS
+  // --- 2. MODAIS (Processam a Lógica) ---
   if (
     isModal &&
     [MODAL_TAG, MODAL_CHANNEL, MODAL_ADD_USER].includes(interaction.customId)
   ) {
     await interaction.deferReply({ ephemeral: true });
 
-    // AWAIT OBRIGATÓRIO (Banco de Dados)
+    // Busca dados no Banco de Dados
     const vipData = await getVipData(interaction.user.id);
-    const logChannelId =
-      interaction.client.config.PD_LOG_CHANNEL_ID ||
-      interaction.client.config.LOG_CHANNEL_ID;
 
     if (!vipData)
       return replyEmbed(
@@ -137,10 +141,12 @@ module.exports = async (interaction) => {
             `<:certo_froid:1443643346722754692> Tag editada para **${tagName}**!`
           );
         } else {
-          const anchorId = process.env.VIP_ANCHOR_ROLE_ID;
+          // Busca ID da âncora usando a função segura
+          const anchorId = getConfig("VIP_ANCHOR_ROLE_ID");
           const anchorRole = anchorId
             ? interaction.guild.roles.cache.get(anchorId)
             : null;
+
           const position = anchorRole ? anchorRole.position - 1 : 1;
 
           role = await interaction.guild.roles.create({
@@ -155,10 +161,8 @@ module.exports = async (interaction) => {
           );
           await member.roles.add(role);
 
-          // AWAIT (Banco de Dados)
           await updateVipData(interaction.user.id, { customRoleId: role.id });
 
-          // Sincroniza permissão do canal se já existir
           if (vipData.customChannelId) {
             const ch = await interaction.guild.channels
               .fetch(vipData.customChannelId)
@@ -188,10 +192,17 @@ module.exports = async (interaction) => {
     // --- B. CONFIGURAR CANAL ---
     else if (interaction.customId === MODAL_CHANNEL) {
       const channelName = interaction.fields.getTextInputValue("channel_name");
-      const categoryId = process.env.VIP_CATEGORY_ID;
-      const verifiedRoleId = process.env.VERIFIED_ROLE_ID;
 
-      // DELETAR CANAL
+      // LEITURA SEGURA DAS VARIÁVEIS
+      const categoryId = getConfig("VIP_CATEGORY_ID");
+      const verifiedRoleId = getConfig("VERIFIED_ROLE_ID");
+
+      // Debug no console para confirmação
+      console.log(
+        `[VIP DEBUG] Categoria: ${categoryId} | Verificado: ${verifiedRoleId}`
+      );
+
+      // Deletar Canal
       if (channelName.toLowerCase() === "deletar") {
         if (vipData.customChannelId) {
           const ch = await interaction.guild.channels
@@ -199,14 +210,14 @@ module.exports = async (interaction) => {
             .catch(() => null);
           if (ch) {
             await ch.delete();
-            await updateVipData(interaction.user.id, { customChannelId: null }); // AWAIT
+            await updateVipData(interaction.user.id, { customChannelId: null });
             return replyEmbed(
               interaction,
               "Sucesso",
               "<:vmc_lixeiraK:1443653159779041362> Canal deletado."
             );
           } else {
-            await updateVipData(interaction.user.id, { customChannelId: null }); // AWAIT
+            await updateVipData(interaction.user.id, { customChannelId: null });
             return replyEmbed(
               interaction,
               "Aviso",
@@ -236,16 +247,16 @@ module.exports = async (interaction) => {
             `<:certo_froid:1443643346722754692> Canal renomeado para **${channelName}**.`
           );
         } else {
+          // CRIAÇÃO
           if (!categoryId)
             return replyEmbed(
               interaction,
               "Configuração",
-              "<:am_avisoK:1443645307358544124> Categoria VIP não configurada no servidor."
+              "<:am_avisoK:1443645307358544124> Categoria VIP não encontrada no servidor (.env)."
             );
 
-          // DEFINIÇÃO DE PERMISSÕES (Lógica que você pediu)
           const overwrites = [
-            // Everyone: Não vê, não conecta
+            // Everyone: BLOQUEADO
             {
               id: interaction.guild.id,
               deny: [
@@ -253,7 +264,7 @@ module.exports = async (interaction) => {
                 PermissionsBitField.Flags.Connect,
               ],
             },
-            // Dono: Vê, conecta e gerencia
+            // Dono: LIBERADO
             {
               id: interaction.user.id,
               allow: [
@@ -263,15 +274,16 @@ module.exports = async (interaction) => {
               ],
             },
           ];
-          // Verificados: Veem, mas não conectam
-          if (verifiedRoleId)
+
+          if (verifiedRoleId) {
             overwrites.push({
               id: verifiedRoleId,
               allow: [PermissionsBitField.Flags.ViewChannel],
               deny: [PermissionsBitField.Flags.Connect],
             });
-          // Amigos (Tag): Veem e conectam
-          if (vipData.customRoleId)
+          }
+
+          if (vipData.customRoleId) {
             overwrites.push({
               id: vipData.customRoleId,
               allow: [
@@ -279,6 +291,7 @@ module.exports = async (interaction) => {
                 PermissionsBitField.Flags.Connect,
               ],
             });
+          }
 
           channel = await interaction.guild.channels.create({
             name: channelName,
@@ -287,10 +300,10 @@ module.exports = async (interaction) => {
             permissionOverwrites: overwrites,
           });
 
-          // AWAIT (Banco de Dados)
           await updateVipData(interaction.user.id, {
             customChannelId: channel.id,
           });
+
           replyEmbed(
             interaction,
             "Sucesso",
@@ -298,7 +311,12 @@ module.exports = async (interaction) => {
           );
         }
       } catch (e) {
-        replyEmbed(interaction, "Erro", "Falha ao criar canal.");
+        console.error("[VIP ERROR]", e);
+        replyEmbed(
+          interaction,
+          "Erro",
+          "Falha ao criar canal. Verifique logs."
+        );
       }
     }
 
@@ -313,7 +331,6 @@ module.exports = async (interaction) => {
           "<:Nao:1443642030637977743> Crie sua tag primeiro."
         );
 
-      // Busca a role para garantir que existe
       const role = await interaction.guild.roles
         .fetch(vipData.customRoleId)
         .catch(() => null);
@@ -334,7 +351,6 @@ module.exports = async (interaction) => {
           "<:Nao:1443642030637977743> Usuário não encontrado no servidor."
         );
 
-      // AWAIT (Banco de Dados)
       const res = await addFriend(interaction.user.id, friendId);
       if (!res.success)
         return replyEmbed(
